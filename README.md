@@ -1,2 +1,31 @@
 # Haskell-Hex-Editor
-The final project for CSE 230 (2023 Fall): A hex editor in Haskell with terminal UI
+
+This repository contains a hex editor in Haskell with [the `brick` library](https://github.com/jtdaugherty/brick/) as the terminal UI. A hex editor is a computer program that allows for manipulation of the fundamental binary data that constitutes a computer file. We aim to build a hex editor that is easy to use and has a friendly user interface in command line.
+
+Key features of the hex editor will include:
+
+1. **Hexadecimal Display**: The application will present the binary content of files in a hexadecimal format, allowing users to visually inspect the data.
+2. **ASCII Representation**: Alongside the hexadecimal display, the editor will show the ASCII representation of the data, making it easier for users to interpret text-based information within the binary file.
+3. **Navigation and Editing**: Users will be able to navigate through the file, moving to specific offsets, and edit the content at the byte level. This includes functions like inserting, deleting, or modifying individual bytes.
+4. **Search and Replace**: The hex editor will provide search and replace functionalities, allowing users to locate specific byte sequences within the file and replace them with desired values.
+
+Some advanced features of the hex editor will include:
+
+1. **Large File Optimization**: The editor will be able to handle large files without crashing or slowing down.
+2. **Multiple Charset Support**: The editor will support multiple charsets, allowing users to view and edit files in different encodings.
+
+## Environment Setup
+
+* This project is developed with [cse130-assignments/cse130-devcontainer](https://github.com/cse130-assignments/cse130-devcontainer/pkgs/container/cse130-devcontainer) on Docker.
+* The image `cse130-assignments/cse130-devcontainer` is based on Debian GNU/Linux 11 and GHC 9.2.7 with `stack`.
+
+## Collaborators
+
+* Junqi Xie
+* Chengsong Diao
+* Dier Hou
+* Kaifeng Jin
+
+## License
+
+* MIT License applies to this project. See `LICENSE` for more information.

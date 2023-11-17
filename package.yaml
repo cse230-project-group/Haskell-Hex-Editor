@@ -1,0 +1,59 @@
+name:                haskell-hex-editor
+version:             0.1.0.0
+github:              "cse230-project-group/haskell-hex-editor"
+license:             MIT
+author:              "cse230-project-group"
+maintainer:          "junqixie@ucsd.edu"
+copyright:           "2023 cse230-project-group"
+
+extra-source-files:
+- README.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/cse230-project-group/haskell-hex-editor#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- brick
+
+ghc-options:
+- -Wall
+- -Wcompat
+- -Widentities
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wmissing-export-lists
+- -Wmissing-home-modules
+- -Wpartial-fields
+- -Wredundant-constraints
+
+library:
+  source-dirs: src
+
+executables:
+  haskell-hex-editor-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - haskell-hex-editor
+
+tests:
+  haskell-hex-editor-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - haskell-hex-editor

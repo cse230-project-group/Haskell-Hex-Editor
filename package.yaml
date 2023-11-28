@@ -21,6 +21,10 @@ description:         Please see the README on GitHub at <https://github.com/cse2
 dependencies:
 - base >= 4.7 && < 5
 - brick
+- vty
+- lens
+- containers
+- directory
 
 ghc-options:
 - -Wall

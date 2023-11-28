@@ -1,6 +1,17 @@
-module Lib
-    ( someFunc
-    ) where
+module Lib where
 
-someFunc :: IO ()
-someFunc = putStrLn "someFunc"
+import AppData
+import Brick
+import Control.Lens
+import qualified Data.Map as M
+
+funcMap :: M.Map String (EventM AppName AppState ())
+funcMap = M.fromList [ ("Status", debugStatus)
+                     , ("Exit", exit)
+                     ]
+
+debugStatus :: EventM AppName AppState ()
+debugStatus = status .= "Debug"
+
+exit :: EventM AppName AppState ()
+exit = halt

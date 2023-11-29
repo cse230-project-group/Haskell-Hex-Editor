@@ -6,7 +6,7 @@ import Control.Lens
 import qualified Data.Map as M
 
 funcMap :: M.Map String (EventM AppName AppState ())
-funcMap = M.fromList [ ("Status", debugStatus)
+funcMap = M.fromList [ ("Debug Status", debugStatus)
                      , ("Exit", exit)
                      ]
 

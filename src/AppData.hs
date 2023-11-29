@@ -3,12 +3,13 @@ module AppData where
 
 import Brick
 import Control.Lens (makeLenses)
+import qualified Data.Map as M
 import Graphics.Vty
 
 data AppMode = Cmd | Edit
     deriving (Eq)
 
-data AppName = Menu | Editor | Status
+data AppName = Menu | Editor | Status | MenuLayer Int | MenuBtn Int
     deriving (Eq, Ord, Show)
 
 data AppState = MkState
@@ -17,6 +18,7 @@ data AppState = MkState
     , _status :: String
     , _menuFocus :: [Int]
     , _menuLayers :: [(Int, Widget AppName)]
+    , _menuBtns :: M.Map Int (Int, Int)
     }
 
 makeLenses ''AppState
@@ -28,7 +30,7 @@ instance Show MenuItem where
     show (MkMenu name _) = name
 
 initState :: AppState
-initState = MkState Cmd Nothing "Ready" [0] []
+initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))])
 
 menuList :: [[MenuItem]]
 menuList = [ [ MkMenu "File" (Just 1)
@@ -43,7 +45,13 @@ menuList = [ [ MkMenu "File" (Just 1)
            , [ MkMenu "Debug ->" (Just 3)
              , MkMenu "About" Nothing
              ]
-           , [ MkMenu "Status" Nothing
+           , [ MkMenu "Debug Status" Nothing
+             , MkMenu "Debug 1" Nothing
+             , MkMenu "Debug 2" Nothing
+             , MkMenu "Debug 3" Nothing
+             , MkMenu "Debug 4" Nothing
+             , MkMenu "Debug 5" Nothing
+             , MkMenu "Debug Long String                              1             2       3  4" Nothing
              ]
            ]
 

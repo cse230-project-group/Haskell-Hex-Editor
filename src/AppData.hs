@@ -3,14 +3,27 @@ module AppData where
 
 import Brick
 import Control.Lens (makeLenses)
-import qualified Data.Map as M
 import Graphics.Vty
+
+import qualified Data.Map as M
 
 data AppMode = Cmd | Edit
     deriving (Eq)
 
-data AppName = Menu | Editor | Status | MenuLayer Int | MenuBtn Int
+data AppName = Menu | Editor | Status
+    | MenuLayer Int | MenuBtn Int
+    | PromptBody | PromptBtnLayer | PromptBtn String
     deriving (Eq, Ord, Show)
+
+data AppPrompt = MkPrompt
+    { _pTitle :: String
+    , _pBody :: Widget AppName
+    , _pWidth :: Maybe Int
+    , _pHeight :: Maybe Int
+    , _pButtons :: [(String, EventM AppName AppState ())]
+    , _pButtonFocus :: Int
+    , _pExtraHandler :: Maybe (BrickEvent AppName () -> EventM AppName AppState ())
+    }
 
 data AppState = MkState
     { _mode :: AppMode
@@ -19,8 +32,10 @@ data AppState = MkState
     , _menuFocus :: [Int]
     , _menuLayers :: [(Int, Widget AppName)]
     , _menuBtns :: M.Map Int (Int, Int)
+    , _prompt :: Maybe AppPrompt
     }
 
+makeLenses ''AppPrompt
 makeLenses ''AppState
 
 data MenuItem = MkMenu String (Maybe Int)
@@ -30,7 +45,7 @@ instance Show MenuItem where
     show (MkMenu name _) = name
 
 initState :: AppState
-initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))])
+initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing
 
 menuList :: [[MenuItem]]
 menuList = [ [ MkMenu "File" (Just 1)
@@ -51,7 +66,8 @@ menuList = [ [ MkMenu "File" (Just 1)
              , MkMenu "Debug 3" Nothing
              , MkMenu "Debug 4" Nothing
              , MkMenu "Debug 5" Nothing
-             , MkMenu "Debug Long String                              1             2       3  4" Nothing
+             , MkMenu "Debug Long String .............................. 1 .............. 2 ...... 3 .. 4  5 End" Nothing
+             , MkMenu "Debug Prompt" Nothing
              ]
            ]
 
@@ -100,6 +116,15 @@ infoAttr = attrName "info"
 statusAttr :: AttrName
 statusAttr = attrName "status"
 
+promptTitleAttr :: AttrName
+promptTitleAttr = attrName "prompt-title"
+
+promptBgAttr :: AttrName
+promptBgAttr = attrName "prompt-background"
+
+promptAttr :: AttrName
+promptAttr = attrName "prompt"
+
 appAttr :: AttrMap
 appAttr = attrMap defAttr
     [ (editorBgAttr, bg black)
@@ -109,4 +134,7 @@ appAttr = attrMap defAttr
     , (menuSelAttr, white `on` blue)
     , (infoAttr, grey `on` black)
     , (statusAttr, black `on` brightGrey)
+    , (promptTitleAttr, white `on` cyan)
+    , (promptBgAttr, bg white)
+    , (promptAttr, black `on` white)
     ]

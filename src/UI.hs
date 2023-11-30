@@ -1,17 +1,18 @@
 module UI (start) where
 
 import AppData
-import Brick
+import Brick hiding (zoom)
 import Brick.Widgets.Center
 import Control.Lens
 import Control.Monad
-import Data.List (foldl')
+import Data.List (foldl', foldl1')
 import Data.Maybe
-import qualified Data.Map as M
 import Graphics.Vty
 import Lib
 
-app :: App AppState e AppName
+import qualified Data.Map as M
+
+app :: App AppState () AppName
 app = App
     { appDraw = drawUI
     , appChooseCursor = neverShowCursor
@@ -108,11 +109,52 @@ refreshBtn id = do
         in
             menuBtns .= M.insert id loc oldBtns
 
+drawPrompt :: AppState -> Maybe (Widget AppName)
+drawPrompt state = case state ^. prompt of
+    Nothing -> Nothing
+    Just p -> return $ Widget Fixed Fixed $ do
+        ctx <- getContext
+        let width = min (windowWidth ctx) (fromMaybe (windowWidth ctx `div` 2) $ p ^. pWidth)
+            height = min (windowHeight ctx - 2) (fromMaybe ((windowHeight ctx - 2) `div` 2) $ p ^. pHeight)
+            x = (windowWidth ctx - width) `div` 2
+            y = (windowHeight ctx - height - 2) `div` 2
+            titleStrLen = length $ p ^. pTitle
+            titleStr = if titleStrLen + 2 <= width
+                then
+                    p ^. pTitle
+                else
+                    take (width - 5) (p ^. pTitle) ++ take (min 3 (width - 2)) "..."
+            r = width - length titleStr - 1
+            title = withAttr promptTitleAttr $ vLimit 1 $ padLeft (Pad 1) $ padRight (Pad r) $ str titleStr
+            body = withAttr promptBgAttr $ vLimit height $ viewport PromptBody Both $ Widget Fixed Fixed $
+                render $ withAttr promptAttr $ p ^. pBody
+            btnDisplay = if sum (map ((+) 2 . length . fst) (p ^. pButtons)) > width
+                then
+                    viewport PromptBtnLayer Horizontal
+                else
+                    hCenter
+            buttons = withAttr promptBgAttr $ vLimit 1 $ btnDisplay $
+                foldl1' (<+>) $ zipWith (curry genButton) [0..] (p ^. pButtons)
+            genButton (id, (s, _)) =
+                let alt = if id == p ^. pButtonFocus
+                        then
+                            withAttr menuSelAttr . visible
+                        else
+                            withAttr menuNormAttr
+                    in
+                        alt $ padLeft (Pad 1) $ padRight (Pad 1) $ str s
+            in
+                render $ translateBy (Location (x, y)) $ hLimit width $
+                    title <=>
+                    body <=>
+                    buttons
+
 drawUI :: AppState -> [Widget AppName]
-drawUI state = menuLayers ++ [menuWidget, statusWidget, editorWidget]
+drawUI state = promptLayer : menuLayers ++ [menuWidget, statusWidget, editorWidget]
     where
         statusText = withAttr statusAttr $
             str $ state ^. status
+        promptLayer = fromMaybe emptyWidget $ drawPrompt state
         menuWidget = withAttr menuBgAttr $ vLimit 1 $ viewport Menu Horizontal $ menuText state
         menuLayers = reverse $ genMenuLayers state
         statusWidget = Widget Greedy Greedy $ do
@@ -124,14 +166,18 @@ drawUI state = menuLayers ++ [menuWidget, statusWidget, editorWidget]
             --Nothing -> withAttr editorBgAttr $ padTopBottom 1 $ viewport Editor Horizontal infoText
             Nothing -> withAttr editorBgAttr $ padTopBottom 1 infoText
 
-handler :: BrickEvent AppName e -> EventM AppName AppState ()
+handler :: BrickEvent AppName () -> EventM AppName AppState ()
 handler event = do
-    curr <- use mode
-    case curr of
-        Cmd -> cmdHandler event
-        Edit -> editHandler event
+    p <- use prompt
+    case p of
+        Just _ -> promptHandler event
+        Nothing -> do
+            curr <- use mode
+            case curr of
+                Cmd -> cmdHandler event
+                Edit -> editHandler event
 
-cmdHandler :: BrickEvent AppName e -> EventM AppName AppState ()
+cmdHandler :: BrickEvent AppName () -> EventM AppName AppState ()
 cmdHandler (VtyEvent (EvKey key modifier)) = case key of
     KEsc -> do
         mLayers <- use menuLayers
@@ -140,7 +186,7 @@ cmdHandler (VtyEvent (EvKey key modifier)) = case key of
                 path <- use file
                 case path of
                     Just p -> mode .= Edit
-                    Nothing -> status .= "No file opened"
+                    Nothing -> setStatus "No file opened"
             _:ls -> do
                 menuLayers .= ls
                 mFocus <- use menuFocus
@@ -151,8 +197,11 @@ cmdHandler (VtyEvent (EvKey key modifier)) = case key of
     KDown -> focusChange 1
     KRight -> focusChange 1
     KEnter -> menuHandler
-    _ -> status .= "Unknown key: " ++ show key
+    KPageUp -> statusScroll (-1)
+    KPageDown -> statusScroll 1
+    _ -> setStatus $ "Unknown key: " ++ show key
 cmdHandler (VtyEvent EvResize {}) = do
+    --refreshStatus
     refreshBtn 0
     mLayers <- use menuLayers
     mapM_ ((\i ->
@@ -218,7 +267,7 @@ execAction :: String -> EventM AppName AppState ()
 execAction name = do
     case M.lookup name funcMap of
         Just f -> f
-        Nothing -> status .= "Not implemented"
+        Nothing -> setStatus "Not implemented"
     clearMenus
 
 clearMenus :: EventM AppName AppState ()
@@ -230,7 +279,47 @@ clearMenus = do
     let loc = fromMaybe undefined $ M.lookup 0 mBtns in
         menuBtns .= M.fromList [(0, loc)]
 
-editHandler :: BrickEvent AppName e -> EventM AppName AppState ()
+statusScroll :: Int -> EventM AppName AppState ()
+statusScroll d = let vp = viewportScroll Status in
+    hScrollBy vp d
+
+promptHandler :: BrickEvent AppName () -> EventM AppName AppState ()
+promptHandler (VtyEvent (EvKey key modifier)) = case key of
+    KChar '\t' -> promptFocusChange 1
+    KBackTab -> promptFocusChange (-1)
+    KEnter -> do
+        p <- use prompt
+        let p' = fromMaybe undefined p
+            in do
+                (_, f) <- nestEventM p' $ do
+                    focus <- use pButtonFocus
+                    btns <- use pButtons
+                    return $ snd $ btns !! focus
+                f
+    KEsc -> prompt .= Nothing
+    KUp -> let vp = viewportScroll PromptBody in
+        vScrollBy vp (-1)
+    KDown -> let vp = viewportScroll PromptBody in
+        vScrollBy vp 1
+    KLeft -> let vp = viewportScroll PromptBody in
+        hScrollBy vp (-1)
+    KRight -> let vp = viewportScroll PromptBody in
+        hScrollBy vp 1
+    _ -> return ()
+promptHandler _ = return ()
+
+promptFocusChange :: Int -> EventM n AppState ()
+promptFocusChange i = do
+    p <- use prompt
+    let p' = fromMaybe undefined p
+        in do
+            p'' <- nestEventM' p' $ do
+                focus <- use pButtonFocus
+                btns <- use pButtons
+                pButtonFocus .= (focus + i) `mod` length btns
+            prompt .= Just p''
+
+editHandler :: BrickEvent AppName () -> EventM AppName AppState ()
 editHandler _ = return ()
 
 start :: IO ()

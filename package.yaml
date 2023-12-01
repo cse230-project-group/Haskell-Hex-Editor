@@ -25,6 +25,8 @@ dependencies:
 - lens
 - containers
 - directory
+- mmap
+- vector
 
 ghc-options:
 - -Wall

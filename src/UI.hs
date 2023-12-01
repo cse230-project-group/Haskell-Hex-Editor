@@ -5,10 +5,14 @@ import Brick hiding (zoom)
 import Brick.Widgets.Center
 import Control.Lens
 import Control.Monad
+import Data.Char (toUpper, chr)
 import Data.List (foldl', foldl1')
 import Data.Maybe
+import Data.Vector ((!))
+import GHC.Num (integerLog2)
 import Graphics.Vty
 import Lib
+import Numeric (showHex)
 
 import qualified Data.Map as M
 
@@ -127,7 +131,7 @@ drawPrompt state = case state ^. prompt of
             r = width - length titleStr - 1
             title = withAttr promptTitleAttr $ vLimit 1 $ padLeft (Pad 1) $ padRight (Pad r) $ str titleStr
             body = withAttr promptBgAttr $ vLimit height $ viewport PromptBody Both $ Widget Fixed Fixed $
-                render $ withAttr promptAttr $ p ^. pBody
+                render $ withAttr promptAttr $ (p ^. pBody) state
             btnDisplay = if sum (map ((+) 2 . length . fst) (p ^. pButtons)) > width
                 then
                     viewport PromptBtnLayer Horizontal
@@ -149,6 +153,132 @@ drawPrompt state = case state ^. prompt of
                     body <=>
                     buttons
 
+drawEditor :: AppState -> Widget AppName
+drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ offsetWidget <+> hexWidget <+> asciiWidget
+    where
+        offsetWidget = Widget Fixed Fixed $ do
+            ctx <- getContext
+            let height = windowHeight ctx - 2
+                currRow = state ^. fileOffset `div` 16
+                minRow = state ^. fileRow
+                maxRow = min ((max 1 (state ^. fileSize) - 1) `div` 16) $ minRow + fromIntegral height - 2
+                rawWidth = ((fromIntegral (integerLog2 maxRow) + 4) `div` 16 + 1) * 4 + 2
+                widthLimit = windowWidth ctx `div` 2
+                width = if rawWidth > widthLimit
+                    then
+                        max 6 $ rawWidth - ((rawWidth - widthLimit - 1) `div` 4 + 1) * 4
+                    else
+                        rawWidth
+                f num =
+                    let rawNum = replicate (width - 4) '0' ++ showHex num "0"
+                        attr = if num == currRow
+                            then
+                                headerFocusAttr
+                            else
+                                headerAttr
+                    in
+                        withAttr attr $ str $ map toUpper $ drop (length rawNum + 2 - width) rawNum
+                in
+                    render $ vLimit height $ hLimit width $ padTop (Pad 1) $ padLeftRight 1 $
+                        if maxRow < minRow
+                            then
+                                emptyWidget
+                            else
+                                foldl1' (<=>) $ map f [minRow..maxRow]
+                    --render $ str (show (height, currRow, minRow, maxRow, rawWidth, widthLimit, width))
+        hexHeader = foldl1' (<+>) $ f (head lst) : map (padLeft (Pad 1) . f) (tail lst)
+            where
+                lst = map (\n -> (n, ' ' : map toUpper (showHex n ""))) [0..15]
+                f (n, e) =
+                    let attr = if state ^. fileOffset `mod` 16 == n
+                        then
+                            withAttr headerFocusAttr . visible
+                        else
+                            withAttr headerAttr
+                        in
+                            attr $ str e
+        hexWidget = Widget Fixed Fixed $ do
+            ctx <- getContext
+            let height = windowHeight ctx - 2
+                currRow = state ^. fileOffset `div` 16
+                minRow = state ^. fileRow
+                maxRow = min ((max 1 (state ^. fileSize) - 1) `div` 16) $ minRow + fromIntegral height - 2
+                leftRawWidth = ((fromIntegral (integerLog2 maxRow) + 4) `div` 16 + 1) * 4 + 2
+                leftWidthLimit = windowWidth ctx `div` 2
+                leftWidth = if leftRawWidth > leftWidthLimit
+                    then
+                        max 6 $ leftRawWidth - ((leftRawWidth - leftWidthLimit - 1) `div` 4 + 1) * 4
+                    else
+                        leftRawWidth
+                width = (windowWidth ctx - leftWidth) * 3 `div` 4
+                f :: Integer -> Widget AppName
+                f num =
+                    let begin = num * 16
+                        end = begin + 15
+                        g :: Integer -> Widget AppName
+                        g off =
+                            let attr = if state ^. fileOffset == off
+                                    then
+                                        foldl1' (<+>) $ zipWith (curry fun) [0..] hexStr
+                                    else
+                                        withAttr editorAttr $ str hexStr
+                                focusAttr = if state ^. hexMode then editorFocusAttr else editorWeakFocusAttr
+                                hexRaw = map toUpper $ showHex ((state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset))) ""
+                                hexStr = if length hexRaw == 1 then '0' : hexRaw else hexRaw
+                                fun (i, c) = (if i == state ^. hexOffset then withAttr focusAttr . visible else withAttr editorAttr) $
+                                    str [c]
+                                in
+                                    attr
+                        in
+                            foldl1' (<+>) $ g begin : map (padLeft (Pad 1) . g) [begin + 1..end]
+                in
+                    render $ vLimit height $ hLimit width $ padLeftRight 1 $ viewport HexView Horizontal $ hexHeader <=>
+                        if maxRow < minRow
+                            then
+                                emptyWidget
+                            else
+                                foldl1' (<=>) $ map f [minRow..maxRow]
+        asciiHeader width = withAttr headerAttr $ padLeft (Pad (width - 7)) $ str "ASCII"
+        asciiWidget = Widget Fixed Fixed $ do
+            ctx <- getContext
+            let height = windowHeight ctx - 2
+                currRow = state ^. fileOffset `div` 16
+                minRow = state ^. fileRow
+                maxRow = min ((max 1 (state ^. fileSize) - 1) `div` 16) $ minRow + fromIntegral height - 2
+                leftRawWidth = ((fromIntegral (integerLog2 maxRow) + 4) `div` 16 + 1) * 4 + 2
+                leftWidthLimit = windowWidth ctx `div` 2
+                leftWidth = if leftRawWidth > leftWidthLimit
+                    then
+                        max 6 $ leftRawWidth - ((leftRawWidth - leftWidthLimit - 1) `div` 4 + 1) * 4
+                    else
+                        leftRawWidth
+                width = (windowWidth ctx - leftWidth) - ((windowWidth ctx - leftWidth) * 3 `div` 4)
+                f :: Integer -> Widget AppName
+                f num =
+                    let begin = num * 16
+                        end = begin + 15
+                        g :: Integer -> Widget AppName
+                        g off =
+                            let attr = if state ^. fileOffset == off
+                                    then
+                                        withAttr focusAttr . visible
+                                    else
+                                        withAttr editorAttr
+                                focusAttr = if state ^. hexMode then editorWeakFocusAttr else editorFocusAttr
+                                asciiVal = chr $ fromIntegral $ (state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset))
+                                asciiStr = if asciiVal >= ' ' && asciiVal <= '~' then [asciiVal] else "."
+                                in
+                                    attr $ str asciiStr
+                        in
+                            foldl1' (<+>) $ map g [begin..end]
+                in
+                    render $ vLimit height $ hLimit width $ padLeftRight 1 $ viewport AsciiView Horizontal $ asciiHeader width <=>
+                        if maxRow < minRow
+                            then
+                                emptyWidget
+                            else
+                                foldl1' (<=>) $ map f [minRow..maxRow]
+
 drawUI :: AppState -> [Widget AppName]
 drawUI state = promptLayer : menuLayers ++ [menuWidget, statusWidget, editorWidget]
     where
@@ -162,9 +292,8 @@ drawUI state = promptLayer : menuLayers ++ [menuWidget, statusWidget, editorWidg
             render $ translateBy (Location (0, windowHeight ctx - 1)) $
                 withAttr statusBgAttr $ vLimit 1 $ viewport Status Horizontal statusText
         editorWidget = case state ^. file of
-            Just path -> undefined
-            --Nothing -> withAttr editorBgAttr $ padTopBottom 1 $ viewport Editor Horizontal infoText
-            Nothing -> withAttr editorBgAttr $ padTopBottom 1 infoText
+            Just _ -> drawEditor state
+            Nothing -> withAttr editorBgAttr $ padTopBottom 1 $ reportExtent Editor infoText
 
 handler :: BrickEvent AppName () -> EventM AppName AppState ()
 handler event = do
@@ -284,7 +413,7 @@ statusScroll d = let vp = viewportScroll Status in
     hScrollBy vp d
 
 promptHandler :: BrickEvent AppName () -> EventM AppName AppState ()
-promptHandler (VtyEvent (EvKey key modifier)) = case key of
+promptHandler event@(VtyEvent (EvKey key modifier)) = case key of
     KChar '\t' -> promptFocusChange 1
     KBackTab -> promptFocusChange (-1)
     KEnter -> do
@@ -305,8 +434,19 @@ promptHandler (VtyEvent (EvKey key modifier)) = case key of
         hScrollBy vp (-1)
     KRight -> let vp = viewportScroll PromptBody in
         hScrollBy vp 1
-    _ -> return ()
-promptHandler _ = return ()
+    _ -> passExtraHandler event
+promptHandler event = passExtraHandler event
+
+passExtraHandler:: BrickEvent AppName () -> EventM AppName AppState ()
+passExtraHandler event = do
+        p <- use prompt
+        let p' = fromMaybe undefined p
+            in do
+                (_, f) <- nestEventM p' $ do
+                    use pExtraHandler
+                case f of
+                    Just f' -> f' event
+                    Nothing -> return ()
 
 promptFocusChange :: Int -> EventM n AppState ()
 promptFocusChange i = do
@@ -320,7 +460,68 @@ promptFocusChange i = do
             prompt .= Just p''
 
 editHandler :: BrickEvent AppName () -> EventM AppName AppState ()
-editHandler _ = return ()
+editHandler event = case event of
+    VtyEvent (EvKey key modifier) -> case key of
+        KEsc -> mode .= Cmd
+        KChar '\t' -> do
+            old <- use hexMode
+            hexMode .= not old
+        KLeft -> do
+            hm <- use hexMode
+            if hm then alterHexOffset (-1) else hexOffset .= 0 >> alterOffset (-1)
+        KRight -> do
+            hm <- use hexMode
+            if hm then alterHexOffset 1 else hexOffset .= 0 >> alterOffset 1
+        KUp -> alterOffset (-16)
+        KDown -> alterOffset 16
+        KHome -> do
+            off <- use fileOffset
+            alterOffset (-(off `mod` 16))
+        KEnd -> do
+            off <- use fileOffset
+            alterOffset (15 - (off `mod` 16))
+        KPageUp -> alterOffsetPage (-1)
+        KPageDown -> alterOffsetPage 1
+        _ -> return ()
+    VtyEvent EvResize {} -> alterOffset 0
+    _ -> return ()
+    where
+        alterHexOffset delta = do
+            hexOff <- use hexOffset
+            let rawHexOff = hexOff + delta
+                deltaOff = fromIntegral rawHexOff `div` 2
+                newHexOff = rawHexOff `mod` 2
+                in do
+                    hexOffset .= newHexOff
+                    unless (deltaOff == 0) $ alterOffset deltaOff
+        alterOffset delta = do
+            off <- use fileOffset
+            ext <- lookupExtent HexView
+            size <- use fileSize
+            minRow <- use fileRow
+            case ext of
+                Nothing -> setStatus "internal error"
+                Just (Extent _ _ (_, h)) ->
+                    let newOffset = min (size - 1) $ max 0 $ off + delta
+                        rowNum = newOffset `div` 16
+                        maxRow = minRow + fromIntegral h - 2
+                        in do
+                            fileOffset .= newOffset
+                            if maxRow < minRow
+                                then
+                                    return ()
+                                else do
+                                    when (rowNum < minRow) $ do
+                                        fileRow .= rowNum
+                                        updateMmap (h - 1)
+                                    when (rowNum > maxRow) $ do
+                                        fileRow .= rowNum - maxRow + minRow
+                                        updateMmap (h - 1)
+        alterOffsetPage delta = do
+            ext <- lookupExtent HexView
+            case ext of
+                Nothing -> setStatus "internal error"
+                Just (Extent _ _ (_, h)) -> alterOffset $ delta * 16 * fromIntegral (h - 1)
 
 start :: IO ()
 start = void $ defaultMain app initState

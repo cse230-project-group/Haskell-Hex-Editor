@@ -3,6 +3,8 @@ module AppData where
 
 import Brick
 import Control.Lens (makeLenses)
+import Data.Vector (Vector, empty)
+import Foreign
 import Graphics.Vty
 
 import qualified Data.Map as M
@@ -13,11 +15,13 @@ data AppMode = Cmd | Edit
 data AppName = Menu | Editor | Status
     | MenuLayer Int | MenuBtn Int
     | PromptBody | PromptBtnLayer | PromptBtn String
+    | OpenInput
+    | HexView | AsciiView
     deriving (Eq, Ord, Show)
 
 data AppPrompt = MkPrompt
     { _pTitle :: String
-    , _pBody :: Widget AppName
+    , _pBody :: AppState -> Widget AppName
     , _pWidth :: Maybe Int
     , _pHeight :: Maybe Int
     , _pButtons :: [(String, EventM AppName AppState ())]
@@ -27,12 +31,22 @@ data AppPrompt = MkPrompt
 
 data AppState = MkState
     { _mode :: AppMode
-    , _file :: Maybe String
+    , _file :: Maybe (Ptr Word8, Int, Int, Int)
     , _status :: String
     , _menuFocus :: [Int]
     , _menuLayers :: [(Int, Widget AppName)]
     , _menuBtns :: M.Map Int (Int, Int)
     , _prompt :: Maybe AppPrompt
+    , _fileRow :: Integer
+    , _fileOffset :: Integer
+    , _fileSize :: Integer
+    , _enterFile :: String
+    , _fileWrite :: Bool
+    , _mmapOffset :: Integer
+    , _hexOffset :: Int
+    , _fileBuffer :: Vector Word8
+    , _perfCount :: Int
+    , _hexMode :: Bool
     }
 
 makeLenses ''AppPrompt
@@ -45,7 +59,7 @@ instance Show MenuItem where
     show (MkMenu name _) = name
 
 initState :: AppState
-initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing
+initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" False (-1) 0 empty 0 True
 
 menuList :: [[MenuItem]]
 menuList = [ [ MkMenu "File" (Just 1)
@@ -125,6 +139,30 @@ promptBgAttr = attrName "prompt-background"
 promptAttr :: AttrName
 promptAttr = attrName "prompt"
 
+headerAttr :: AttrName
+headerAttr = attrName "header"
+
+headerFocusAttr :: AttrName
+headerFocusAttr = attrName "header-focus"
+
+editorAttr :: AttrName
+editorAttr = attrName "editor"
+
+editorFocusAttr :: AttrName
+editorFocusAttr = attrName "editor-focus"
+
+editorWeakFocusAttr :: AttrName
+editorWeakFocusAttr = attrName "editor-weak-focus"
+
+editorModAttr :: AttrName
+editorModAttr = attrName "editor-modified"
+
+editorModFocusAttr :: AttrName
+editorModFocusAttr = attrName "editor-modified-focus"
+
+editorModWeakFocusAttr :: AttrName
+editorModWeakFocusAttr = attrName "editor-modified-weak-focus"
+
 appAttr :: AttrMap
 appAttr = attrMap defAttr
     [ (editorBgAttr, bg black)
@@ -137,4 +175,12 @@ appAttr = attrMap defAttr
     , (promptTitleAttr, white `on` cyan)
     , (promptBgAttr, bg white)
     , (promptAttr, black `on` white)
+    , (headerAttr, blue `on` black)
+    , (headerFocusAttr, yellow `on` black)
+    , (editorAttr, white `on` black)
+    , (editorFocusAttr, white `on` brightGrey)
+    , (editorWeakFocusAttr, white `on` grey)
+    , (editorModAttr, red `on` black)
+    , (editorModFocusAttr, red `on` brightGrey)
+    , (editorModWeakFocusAttr, red `on` grey)
     ]

@@ -24,7 +24,9 @@ source-repository head
 
 library
   exposed-modules:
+      AppData
       Lib
+      UI
   other-modules:
       Paths_haskell_hex_editor
   hs-source-dirs:
@@ -33,6 +35,12 @@ library
   build-depends:
       base >=4.7 && <5
     , brick
+    , containers
+    , directory
+    , lens
+    , mmap
+    , vector
+    , vty
   default-language: Haskell2010
 
 executable haskell-hex-editor-exe
@@ -45,7 +53,13 @@ executable haskell-hex-editor-exe
   build-depends:
       base >=4.7 && <5
     , brick
+    , containers
+    , directory
     , haskell-hex-editor
+    , lens
+    , mmap
+    , vector
+    , vty
   default-language: Haskell2010
 
 test-suite haskell-hex-editor-test
@@ -59,5 +73,11 @@ test-suite haskell-hex-editor-test
   build-depends:
       base >=4.7 && <5
     , brick
+    , containers
+    , directory
     , haskell-hex-editor
+    , lens
+    , mmap
+    , vector
+    , vty
   default-language: Haskell2010

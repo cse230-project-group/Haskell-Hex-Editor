@@ -118,6 +118,7 @@ openFile = do
             perm <- liftIO $ getPermissions path
             if readable perm
                 then do
+                    closeFile
                     if writable perm
                         then
                             fileWrite .= True

@@ -154,7 +154,7 @@ drawPrompt state = case state ^. prompt of
                     buttons
 
 drawEditor :: AppState -> Widget AppName
-drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ offsetWidget <+> hexWidget <+> asciiWidget
+drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ reportExtent Editor $ offsetWidget <+> hexWidget <+> asciiWidget
     where
         offsetWidget = Widget Fixed Fixed $ do
             ctx <- getContext
@@ -179,12 +179,12 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ offse
                     in
                         withAttr attr $ str $ map toUpper $ drop (length rawNum + 2 - width) rawNum
                 in
-                    render $ vLimit height $ hLimit width $ padTop (Pad 1) $ padLeftRight 1 $
+                    render $ vLimit height $ hLimit width $ padLeftRight 1 $
                         if maxRow < minRow
                             then
-                                emptyWidget
+                                str $ replicate (width - 2) ' '
                             else
-                                foldl1' (<=>) $ map f [minRow..maxRow]
+                                padTop (Pad 1) $ foldl1' (<=>) $ map f [minRow..maxRow]
                     --render $ str (show (height, currRow, minRow, maxRow, rawWidth, widthLimit, width))
         hexHeader = foldl1' (<+>) $ f (head lst) : map (padLeft (Pad 1) . f) (tail lst)
             where
@@ -200,7 +200,6 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ offse
         hexWidget = Widget Fixed Fixed $ do
             ctx <- getContext
             let height = windowHeight ctx - 2
-                currRow = state ^. fileOffset `div` 16
                 minRow = state ^. fileRow
                 maxRow = min ((max 1 (state ^. fileSize) - 1) `div` 16) $ minRow + fromIntegral height - 2
                 leftRawWidth = ((fromIntegral (integerLog2 maxRow) + 4) `div` 16 + 1) * 4 + 2
@@ -242,7 +241,6 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ offse
         asciiWidget = Widget Fixed Fixed $ do
             ctx <- getContext
             let height = windowHeight ctx - 2
-                currRow = state ^. fileOffset `div` 16
                 minRow = state ^. fileRow
                 maxRow = min ((max 1 (state ^. fileSize) - 1) `div` 16) $ minRow + fromIntegral height - 2
                 leftRawWidth = ((fromIntegral (integerLog2 maxRow) + 4) `div` 16 + 1) * 4 + 2
@@ -496,7 +494,7 @@ editHandler event = case event of
                     unless (deltaOff == 0) $ alterOffset deltaOff
         alterOffset delta = do
             off <- use fileOffset
-            ext <- lookupExtent HexView
+            ext <- lookupExtent Editor
             size <- use fileSize
             minRow <- use fileRow
             case ext of
@@ -518,7 +516,7 @@ editHandler event = case event of
                                         fileRow .= rowNum - maxRow + minRow
                                         updateMmap (h - 1)
         alterOffsetPage delta = do
-            ext <- lookupExtent HexView
+            ext <- lookupExtent Editor
             case ext of
                 Nothing -> setStatus "internal error"
                 Just (Extent _ _ (_, h)) -> alterOffset $ delta * 16 * fromIntegral (h - 1)

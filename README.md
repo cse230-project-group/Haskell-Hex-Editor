@@ -18,6 +18,23 @@ Some advanced features of the hex editor will include:
 
 * This project is developed with [cse130-assignments/cse130-devcontainer](https://github.com/cse130-assignments/cse130-devcontainer/pkgs/container/cse130-devcontainer) on Docker.
 * The image `cse130-assignments/cse130-devcontainer` is based on Debian GNU/Linux 11 and GHC 9.2.7 with `stack`.
+* To launch the program, run `stack run` at the root directory.
+
+## Codebase Overview
+
+The code is located in the [`src`](src) directory, while the tests are located in the [`test`](test) directory. The codebase is roughly divided into 2 components: the core ([`Lib.hs`](Lib.hs)) and the interface ([`UI.hs`](UI.hs)).
+
+### The Core
+
+The core editor is responsible for operations involving File I/O and editing. Binary files are loaded into memory with `System.IO.MMap`, and stored as buffer frames in the buffer. The core editor also responds to the user inputs, and make modifications to the file.
+
+### The Interface
+
+The interface is responsible for displaying the menu, file content and the corresponding ASCII representation. It's implemented with the `brick` library in the event-driven manner, by providing hooks to functionalities in the core editor.
+
+### Implementation Highlights
+
+Our implementation features optimizations to various console sizes, and lazy loading of large files. We followed the docs and demos of the `brick` library to solve the challenge. We are expecting to meet our goal before deadline.
 
 ## Collaborators
 

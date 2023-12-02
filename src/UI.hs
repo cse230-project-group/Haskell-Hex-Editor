@@ -213,7 +213,7 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
                 f :: Integer -> Widget AppName
                 f num =
                     let begin = num * 16
-                        end = begin + 15
+                        end = min (state ^. fileSize - 1) $ begin + 15
                         g :: Integer -> Widget AppName
                         g off =
                             let attr = if state ^. fileOffset == off
@@ -254,7 +254,7 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
                 f :: Integer -> Widget AppName
                 f num =
                     let begin = num * 16
-                        end = begin + 15
+                        end = min (state ^. fileSize - 1) $ begin + 15
                         g :: Integer -> Widget AppName
                         g off =
                             let attr = if state ^. fileOffset == off
@@ -465,11 +465,24 @@ editHandler event = case event of
             old <- use hexMode
             hexMode .= not old
         KLeft -> do
+            off <- use fileOffset
+            hexOff <- use hexOffset
             hm <- use hexMode
-            if hm then alterHexOffset (-1) else hexOffset .= 0 >> alterOffset (-1)
+            if hm
+                then
+                    unless (off == 0 && hexOff == 0) $ alterHexOffset (-1)
+                else
+                    hexOffset .= 0 >> alterOffset (-1)
         KRight -> do
+            off <- use fileOffset
+            hexOff <- use hexOffset
+            size <- use fileSize
             hm <- use hexMode
-            if hm then alterHexOffset 1 else hexOffset .= 0 >> alterOffset 1
+            if hm
+                then
+                    unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
+                else
+                    hexOffset .= 0 >> alterOffset 1
         KUp -> alterOffset (-16)
         KDown -> alterOffset 16
         KHome -> do

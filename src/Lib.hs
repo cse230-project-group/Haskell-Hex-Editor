@@ -118,32 +118,37 @@ openFile = do
             perm <- liftIO $ getPermissions path
             if readable perm
                 then do
-                    closeFile
-                    if writable perm
-                        then
-                            fileWrite .= True
-                        else do
-                            fileWrite .= False
-                            --setStatus $ "No write permission: " ++ path
                     size <- liftIO $ getFileSize path
-                    fileSize .= size
-                    fileOffset .= 0
-                    fileRow .= 0
-                    hexOffset .= 0
-                    mmapOffset .= -1
-                    perfCount .= 0
-                    ext <- lookupExtent Editor
-                    case ext of
-                        Nothing -> setStatus "internal error"
-                        Just (Extent _ _ (_, h)) -> let h' = h - 1 in updateMmap h'
-                    setStatus $ "File opened: " ++ path ++ "; size: " ++ show size ++ "; mode: " ++
-                        if writable perm
-                            then
-                                "ReadWrite"
-                            else
-                                "ReadOnly"
-                    mode .= Edit
-                    exitPrompt
+                    if size == 0
+                        then do
+                            setStatus $ "Empty file: " ++ path
+                            exitPrompt
+                        else do
+                            closeFile
+                            if writable perm
+                                then
+                                    fileWrite .= True
+                                else do
+                                    fileWrite .= False
+                                    --setStatus $ "No write permission: " ++ path
+                            fileSize .= size
+                            fileOffset .= 0
+                            fileRow .= 0
+                            hexOffset .= 0
+                            mmapOffset .= -1
+                            perfCount .= 0
+                            ext <- lookupExtent Editor
+                            case ext of
+                                Nothing -> setStatus "internal error"
+                                Just (Extent _ _ (_, h)) -> let h' = h - 1 in updateMmap h'
+                            setStatus $ "File opened: " ++ path ++ "; size: " ++ show size ++ "; mode: " ++
+                                if writable perm
+                                    then
+                                        "ReadWrite"
+                                    else
+                                        "ReadOnly"
+                            mode .= Edit
+                            exitPrompt
                 else do
                     setStatus $ "No read permission: " ++ path
                     exitPrompt
@@ -158,12 +163,14 @@ updateMmap h = do
     canWrite <- use fileWrite
     oldOffset <- use mmapOffset
     oldFile <- use file
+    size <- use fileSize
     let rawSize = 48 * (h - 1)
         bufferSize = max (12 * 1024) ((4096 - rawSize) `mod` 4096 + rawSize)
         splitSize = bufferSize `div` 3
         safeOffset = max 0 $ offset - (16 * (fromIntegral h - 1))
         newOffset = safeOffset - (safeOffset `mod` fromIntegral splitSize)
-        rawOffset = Just (fromInteger newOffset, bufferSize)
+        safeBufferSize = min bufferSize $ fromInteger $ size - newOffset
+        rawOffset = Just (fromInteger newOffset, safeBufferSize)
         perm = if canWrite
             then
                 ReadWrite
@@ -185,9 +192,12 @@ fillBuffer :: Int -> EventM AppName AppState ()
 fillBuffer h = do
     mmapFile <- use file
     pCnt <- use perfCount
+    size <- use fileSize
+    mmapOff <- use mmapOffset
     let (ptr, _, o, _) = fromMaybe undefined mmapFile
         rawSize = 48 * (h - 1)
         bufferSize = max (12 * 1024) ((4096 - rawSize) `mod` 4096 + rawSize)
+        safeBufferSize = min bufferSize $ fromInteger $ size - mmapOff
         in do
             buffer <- liftIO $ generateM bufferSize (peek . plusPtr (plusPtr ptr o))
             fileBuffer .= buffer
@@ -233,6 +243,7 @@ openHandler (VtyEvent (EvKey key modifier)) = case modifier of
                 else do
                     enterFile .= init prevFile
                     scroll
+        KDel -> enterFile .= ""
         _ -> return ()
     _ -> return ()
     where

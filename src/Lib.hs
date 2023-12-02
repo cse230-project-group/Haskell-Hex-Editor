@@ -3,14 +3,17 @@ module Lib where
 import AppData
 import Brick
 import Brick.Widgets.Center
+import Control.Exception (try)
 import Control.Lens
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Data.List (foldl1')
+import Data.Char (isSpace, toUpper)
+import Data.List (foldl1', dropWhileEnd)
 import Data.Maybe
 import Data.Vector (generateM, empty)
 import Foreign
 import Graphics.Vty
+import Numeric (showHex, readHex)
 import System.Directory
 import System.IO.MMap
 
@@ -32,6 +35,7 @@ funcMap = M.fromList [ ("Debug Status", debugStatus)
                      , ("Debug Prompt", debugPrompt)
                      , ("Open ...", openPrompt)
                      , ("Close", closeFile)
+                     , ("Jump ...", jumpPrompt)
                      ]
 
 debugStatus :: EventM AppName AppState ()
@@ -43,7 +47,7 @@ exit = halt
 about :: EventM AppName AppState ()
 about = prompt .= Just (MkPrompt
     { _pTitle = "About"
-    , _pBody = \_ -> hLimit width $ foldl1' (<=>) $ map (hCenter . str) aboutText
+    , _pBody = \_ _ -> hLimit width $ foldl1' (<=>) $ map (hCenter . str) aboutText
     , _pWidth = Just width
     , _pHeight = Just $ length aboutText
     , _pButtons = [ ("OK", exitPrompt) ]
@@ -63,7 +67,7 @@ exitPrompt = prompt .= Nothing
 debugPrompt :: EventM AppName AppState ()
 debugPrompt = prompt .= Just (MkPrompt
     { _pTitle = "Debug"
-    , _pBody = \_ -> foldl1' (<=>) $ map str text
+    , _pBody = \_ _ -> foldl1' (<=>) $ map str text
     , _pWidth = Nothing
     , _pHeight = Just 3
     , _pButtons = [ ("OK", exitPrompt)
@@ -87,7 +91,7 @@ openPrompt = do
     prompt .= Just (MkPrompt
         { _pTitle = "Open File"
         , _pBody = openBodyWidget
-        , _pWidth = Just width
+        , _pWidth = Nothing
         , _pHeight = Just 3
         , _pButtons = [ ("OK", openFile)
                       , ("Cancel", exitPrompt)
@@ -96,8 +100,7 @@ openPrompt = do
         , _pExtraHandler = Just openHandler
         })
     where
-        width = 40
-        openBodyWidget state = Widget Fixed Fixed $ render $ hLimit width $ vLimit 3 $
+        openBodyWidget state (width, _)  = Widget Fixed Fixed $ render $ hLimit width $ vLimit 3 $
             let file = if state ^. enterFile == ""
                 then
                     " "
@@ -120,9 +123,8 @@ openFile = do
                 then do
                     size <- liftIO $ getFileSize path
                     if size == 0
-                        then do
+                        then
                             setStatus $ "Empty file: " ++ path
-                            exitPrompt
                         else do
                             closeFile
                             if writable perm
@@ -137,24 +139,26 @@ openFile = do
                             hexOffset .= 0
                             mmapOffset .= -1
                             perfCount .= 0
+                            enterOffset .= ""
                             ext <- lookupExtent Editor
                             case ext of
                                 Nothing -> setStatus "internal error"
-                                Just (Extent _ _ (_, h)) -> let h' = h - 1 in updateMmap h'
-                            setStatus $ "File opened: " ++ path ++ "; size: " ++ show size ++ "; mode: " ++
-                                if writable perm
-                                    then
-                                        "ReadWrite"
-                                    else
-                                        "ReadOnly"
-                            mode .= Edit
-                            exitPrompt
-                else do
+                                Just (Extent _ _ (_, h)) -> let h' = h - 1 in do
+                                    updateMmap h'
+                                    mmapFile <- use file
+                                    unless (isNothing mmapFile) $ do
+                                        setStatus $ "File opened: " ++ path ++ "; size: " ++ show size ++ "; mode: " ++
+                                            if writable perm
+                                                then
+                                                    "ReadWrite"
+                                                else
+                                                    "ReadOnly"
+                                        mode .= Edit
+                else
                     setStatus $ "No read permission: " ++ path
-                    exitPrompt
-        else do
+        else
             setStatus $ "File not exist: " ++ path
-            exitPrompt
+    exitPrompt
 
 updateMmap :: Int -> EventM AppName AppState ()
 updateMmap h = do
@@ -182,11 +186,16 @@ updateMmap h = do
         in
             unless (newOffset == oldOffset && bufferSize == oldBufferSize) $ do
                 closeMmap
-                mmapFile <- liftIO $ mmapFilePtr path perm rawOffset
-                mmapOffset .= newOffset
-                file .= Just mmapFile
-                fillBuffer h
-                --setStatus $ path ++ ", " ++ show rawOffset
+                mmapFile <- liftIO ((try $ mmapFilePtr path perm rawOffset) :: IO (Either IOError (Ptr a, Int, Int, Int)))
+                case mmapFile of
+                    Left e -> do
+                        closeFile
+                        setStatus $ "Error reading file: " ++ show e
+                    Right f -> do
+                        mmapOffset .= newOffset
+                        file .= Just f
+                        fillBuffer h
+                        --setStatus $ path ++ ", " ++ show rawOffset
 
 fillBuffer :: Int -> EventM AppName AppState ()
 fillBuffer h = do
@@ -199,7 +208,7 @@ fillBuffer h = do
         bufferSize = max (12 * 1024) ((4096 - rawSize) `mod` 4096 + rawSize)
         safeBufferSize = min bufferSize $ fromInteger $ size - mmapOff
         in do
-            buffer <- liftIO $ generateM bufferSize (peek . plusPtr (plusPtr ptr o))
+            buffer <- liftIO $ generateM safeBufferSize (peek . plusPtr (plusPtr ptr o))
             fileBuffer .= buffer
             perfCount .= pCnt + 1
             --setStatus $ "loaded buffer " ++ show (pCnt + 1)
@@ -226,27 +235,130 @@ closeFile = do
     hexOffset .= 0
     mmapOffset .= -1
     perfCount .= 0
+    enterOffset .= ""
     setStatus "File closed"
 
 openHandler :: BrickEvent AppName () -> EventM AppName AppState ()
-openHandler (VtyEvent (EvKey key modifier)) = case modifier of
-    [] -> case key of
-        KChar c -> do
-            prevFile <- use enterFile
-            enterFile .= prevFile ++ [c]
-            scroll
-        KBS -> do
-            prevFile <- use enterFile
-            if prevFile == ""
-                then
-                    return ()
-                else do
-                    enterFile .= init prevFile
-                    scroll
-        KDel -> enterFile .= ""
+openHandler event = case event of
+    VtyEvent (EvKey key modifier) -> case modifier of
+        [] -> case key of
+            KChar c -> do
+                prevFile <- use enterFile
+                enterFile .= prevFile ++ [c]
+                scroll
+            KBS -> do
+                prevFile <- use enterFile
+                if prevFile == ""
+                    then
+                        return ()
+                    else do
+                        enterFile .= init prevFile
+                        scroll
+            KDel -> enterFile .= ""
+            _ -> return ()
         _ -> return ()
+    VtyEvent EvResize {} -> scroll
     _ -> return ()
     where
         scroll = let vp = viewportScroll OpenInput in
             hScrollToEnd vp
-openHandler _ = return ()
+
+jumpOffset :: Integer -> EventM AppName AppState ()
+jumpOffset offset = do
+    ext <- lookupExtent Editor
+    size <- use fileSize
+    minRow <- use fileRow
+    case ext of
+        Nothing -> setStatus "internal error"
+        Just (Extent _ _ (_, h)) ->
+            let newOffset = min (size - 1) $ max 0 offset
+                rowNum = newOffset `div` 16
+                maxRow = minRow + fromIntegral h - 2
+                in do
+                    fileOffset .= newOffset
+                    if maxRow < minRow
+                        then
+                            return ()
+                        else do
+                            when (rowNum < minRow) $ do
+                                fileRow .= rowNum
+                                updateMmap (h - 1)
+                            when (rowNum > maxRow) $ do
+                                fileRow .= rowNum - maxRow + minRow
+                                updateMmap (h - 1)
+
+jumpPrompt :: EventM AppName AppState ()
+jumpPrompt = do
+    prompt .= Just (MkPrompt
+        { _pTitle = "Jump"
+        , _pBody = jumpWidget
+        , _pWidth = Nothing
+        , _pHeight = Just 3
+        , _pButtons = [ ("OK", jumpEnterOffset)
+                      , ("Cancel", exitPrompt)
+                      ]
+        , _pButtonFocus = 0
+        , _pExtraHandler = Just jumpHandler
+        })
+    where
+        jumpWidget state (width, _)  = Widget Fixed Fixed $ render $ hLimit width $ vLimit 3 $
+            let offset = if state ^. enterOffset == ""
+                then
+                    " "
+                else
+                    state ^. enterOffset
+                in
+                    foldl1' (<=>) [ str "Enter offset in hex:"
+                                  , viewport JumpInput Horizontal $ str offset
+                                  , str $ replicate width '-'
+                                  ]
+
+trimStr :: String -> String
+trimStr = dropWhileEnd isSpace . dropWhile isSpace
+
+jumpEnterOffset :: EventM AppName AppState ()
+jumpEnterOffset = do
+    mmapFile <- use file
+    case mmapFile of
+        Nothing -> setStatus "Cannot jump: no file opened"
+        Just _ -> do
+            off <- use enterOffset
+            let trimOff = trimStr off
+                result = readHex trimOff in
+                case result of
+                    [] -> setStatus $ "Cannot parse hex input: " ++ trimOff
+                    _ -> let (offset, rest) = head result in
+                        if rest == ""
+                            then do
+                                jumpOffset offset
+                                newOff <- use fileOffset
+                                setStatus $ "Jumped to offset: " ++ map toUpper (showHex newOff "")
+                                mode .= Edit
+                            else
+                                setStatus $ "Cannot parse partial hex input: " ++ rest
+    exitPrompt
+
+jumpHandler :: BrickEvent AppName () -> EventM AppName AppState ()
+jumpHandler event = case event of
+    VtyEvent (EvKey key modifier) -> case modifier of
+        [] -> case key of
+            KChar c -> do
+                prevOffset <- use enterOffset
+                enterOffset .= prevOffset ++ [c]
+                scroll
+            KBS -> do
+                prevOffset <- use enterOffset
+                if prevOffset == ""
+                    then
+                        return ()
+                    else do
+                        enterOffset .= init prevOffset
+                        scroll
+            KDel -> enterOffset .= ""
+            _ -> return ()
+        _ -> return ()
+    VtyEvent EvResize {} -> scroll
+    _ -> return ()
+    where
+        scroll = let vp = viewportScroll JumpInput in
+            hScrollToEnd vp

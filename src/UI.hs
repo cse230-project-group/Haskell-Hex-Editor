@@ -131,7 +131,7 @@ drawPrompt state = case state ^. prompt of
             r = width - length titleStr - 1
             title = withAttr promptTitleAttr $ vLimit 1 $ padLeft (Pad 1) $ padRight (Pad r) $ str titleStr
             body = withAttr promptBgAttr $ vLimit height $ viewport PromptBody Both $ Widget Fixed Fixed $
-                render $ withAttr promptAttr $ (p ^. pBody) state
+                render $ withAttr promptAttr $ (p ^. pBody) state (width, height)
             btnDisplay = if sum (map ((+) 2 . length . fst) (p ^. pButtons)) > width
                 then
                     viewport PromptBtnLayer Horizontal
@@ -507,27 +507,7 @@ editHandler event = case event of
                     unless (deltaOff == 0) $ alterOffset deltaOff
         alterOffset delta = do
             off <- use fileOffset
-            ext <- lookupExtent Editor
-            size <- use fileSize
-            minRow <- use fileRow
-            case ext of
-                Nothing -> setStatus "internal error"
-                Just (Extent _ _ (_, h)) ->
-                    let newOffset = min (size - 1) $ max 0 $ off + delta
-                        rowNum = newOffset `div` 16
-                        maxRow = minRow + fromIntegral h - 2
-                        in do
-                            fileOffset .= newOffset
-                            if maxRow < minRow
-                                then
-                                    return ()
-                                else do
-                                    when (rowNum < minRow) $ do
-                                        fileRow .= rowNum
-                                        updateMmap (h - 1)
-                                    when (rowNum > maxRow) $ do
-                                        fileRow .= rowNum - maxRow + minRow
-                                        updateMmap (h - 1)
+            jumpOffset $ off + delta
         alterOffsetPage delta = do
             ext <- lookupExtent Editor
             case ext of

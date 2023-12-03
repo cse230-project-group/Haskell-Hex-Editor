@@ -15,13 +15,13 @@ data AppMode = Cmd | Edit
 data AppName = Menu | Editor | Status
     | MenuLayer Int | MenuBtn Int
     | PromptBody | PromptBtnLayer | PromptBtn String
-    | OpenInput
+    | OpenInput | JumpInput
     | HexView | AsciiView
     deriving (Eq, Ord, Show)
 
 data AppPrompt = MkPrompt
     { _pTitle :: String
-    , _pBody :: AppState -> Widget AppName
+    , _pBody :: AppState -> (Int, Int) -> Widget AppName
     , _pWidth :: Maybe Int
     , _pHeight :: Maybe Int
     , _pButtons :: [(String, EventM AppName AppState ())]
@@ -47,6 +47,7 @@ data AppState = MkState
     , _fileBuffer :: Vector Word8
     , _perfCount :: Int
     , _hexMode :: Bool
+    , _enterOffset :: String
     }
 
 makeLenses ''AppPrompt
@@ -59,10 +60,11 @@ instance Show MenuItem where
     show (MkMenu name _) = name
 
 initState :: AppState
-initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" False (-1) 0 empty 0 True
+initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" False (-1) 0 empty 0 True ""
 
 menuList :: [[MenuItem]]
 menuList = [ [ MkMenu "File" (Just 1)
+             , MkMenu "Edit" (Just 4)
              , MkMenu "Help" (Just 2)
              ]
            , [ MkMenu "Open ..." Nothing
@@ -82,6 +84,8 @@ menuList = [ [ MkMenu "File" (Just 1)
              , MkMenu "Debug 5" Nothing
              , MkMenu "Debug Long String .............................. 1 .............. 2 ...... 3 .. 4  5 End" Nothing
              , MkMenu "Debug Prompt" Nothing
+             ]
+           , [ MkMenu "Jump ..." Nothing
              ]
            ]
 

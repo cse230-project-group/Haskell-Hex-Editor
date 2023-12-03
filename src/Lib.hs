@@ -169,7 +169,8 @@ updateMmap h = do
     oldFile <- use file
     size <- use fileSize
     let rawSize = 48 * (h - 1)
-        bufferSize = max (12 * 1024) ((4096 - rawSize) `mod` 4096 + rawSize)
+        defaultSize = 12 * 1024
+        bufferSize = max defaultSize ((defaultSize - rawSize) `mod` defaultSize + rawSize)
         splitSize = bufferSize `div` 3
         safeOffset = max 0 $ offset - (16 * (fromIntegral h - 1))
         newOffset = safeOffset - (safeOffset `mod` fromIntegral splitSize)
@@ -205,7 +206,8 @@ fillBuffer h = do
     mmapOff <- use mmapOffset
     let (ptr, _, o, _) = fromMaybe undefined mmapFile
         rawSize = 48 * (h - 1)
-        bufferSize = max (12 * 1024) ((4096 - rawSize) `mod` 4096 + rawSize)
+        defaultSize = 12 * 1024
+        bufferSize = max defaultSize ((defaultSize - rawSize) `mod` defaultSize + rawSize)
         safeBufferSize = min bufferSize $ fromInteger $ size - mmapOff
         in do
             buffer <- liftIO $ generateM safeBufferSize (peek . plusPtr (plusPtr ptr o))

@@ -45,6 +45,7 @@ data AppState = MkState
     , _mmapOffset :: Integer
     , _hexOffset :: Int
     , _fileBuffer :: Vector Word8
+    , _modificationBuffer :: M.Map Int Word8
     , _perfCount :: Int
     , _hexMode :: Bool
     , _enterOffset :: String
@@ -60,7 +61,7 @@ instance Show MenuItem where
     show (MkMenu name _) = name
 
 initState :: AppState
-initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" False (-1) 0 empty 0 True ""
+initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" False (-1) 0 empty M.empty 0 True ""
 
 menuList :: [[MenuItem]]
 menuList = [ [ MkMenu "File" (Just 1)

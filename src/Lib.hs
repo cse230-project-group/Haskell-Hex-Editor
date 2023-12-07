@@ -7,10 +7,10 @@ import Control.Exception (try)
 import Control.Lens
 import Control.Monad (unless, when)
 import Control.Monad.IO.Class (MonadIO(liftIO))
-import Data.Char (isSpace, toUpper)
+import Data.Char (isSpace, toUpper, chr)
 import Data.List (foldl1', dropWhileEnd)
 import Data.Maybe
-import Data.Vector (generateM, empty)
+import Data.Vector (generateM, empty, (//))
 import Foreign
 import Graphics.Vty
 import Numeric (showHex, readHex)
@@ -204,6 +204,7 @@ fillBuffer h = do
     pCnt <- use perfCount
     size <- use fileSize
     mmapOff <- use mmapOffset
+    modificationBuf <- use modificationBuffer
     let (ptr, _, o, _) = fromMaybe undefined mmapFile
         rawSize = 48 * (h - 1)
         defaultSize = 12 * 1024
@@ -211,7 +212,9 @@ fillBuffer h = do
         safeBufferSize = min bufferSize $ fromInteger $ size - mmapOff
         in do
             buffer <- liftIO $ generateM safeBufferSize (peek . plusPtr (plusPtr ptr o))
-            fileBuffer .= buffer
+            let mapped   = map (\(off, updated) -> (off - fromInteger mmapOff, updated)) (M.toList modificationBuf)
+                filtered = filter (\(off, _) -> 0 <= off && off < safeBufferSize) mapped
+            fileBuffer .= buffer // filtered
             perfCount .= pCnt + 1
             --setStatus $ "loaded buffer " ++ show (pCnt + 1)
 

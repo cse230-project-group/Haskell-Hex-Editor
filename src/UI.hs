@@ -5,16 +5,17 @@ import Brick hiding (zoom)
 import Brick.Widgets.Center
 import Control.Lens
 import Control.Monad
-import Data.Char (toUpper, chr)
+import Data.Char (toUpper, chr, isHexDigit)
 import Data.List (foldl', foldl1')
 import Data.Maybe
-import Data.Vector ((!))
+import Data.Vector ((!), (//))
 import GHC.Num (integerLog2)
 import Graphics.Vty
 import Lib
-import Numeric (showHex)
+import Numeric (showHex, readHex)
 
 import qualified Data.Map as M
+import Data.Bits
 
 app :: App AppState () AppName
 app = App
@@ -493,6 +494,17 @@ editHandler event = case event of
             alterOffset (15 - (off `mod` 16))
         KPageUp -> alterOffsetPage (-1)
         KPageDown -> alterOffsetPage 1
+        KChar ch -> do
+            off <- use fileOffset
+            hexOff <- use hexOffset
+            size <- use fileSize
+            md <- use hexMode
+            if md then do
+                when (isHexDigit ch) $ alterHex (fst (head (readHex [ch])))
+                unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
+            else do
+                alterAscii ch
+                hexOffset .= 0 >> alterOffset 1
         _ -> return ()
     VtyEvent EvResize {} -> alterOffset 0
     _ -> return ()
@@ -513,6 +525,26 @@ editHandler event = case event of
             case ext of
                 Nothing -> setStatus "internal error"
                 Just (Extent _ _ (_, h)) -> alterOffset $ delta * 16 * fromIntegral (h - 1)
-
+        alterHex :: Int -> EventM AppName AppState ()
+        alterHex c = do
+            fileBuf <- use fileBuffer
+            modificationBuf <- use modificationBuffer
+            off <- use fileOffset
+            hexOff <- use hexOffset
+            mmapOff <- use mmapOffset
+            let current = fileBuf ! (fromInteger (off - mmapOff))
+                updated = if hexOff == 1
+                    then current .&. 0xF0 .|. (fromIntegral c)
+                    else current .&. 0x0F .|. (fromIntegral c) `shiftL` 4
+            fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), updated)]
+            modificationBuffer .= M.insert (fromInteger off) updated modificationBuf
+        alterAscii :: Char -> EventM AppName AppState ()
+        alterAscii c = do
+            fileBuf <- use fileBuffer
+            modificationBuf <- use modificationBuffer
+            off <- use fileOffset
+            mmapOff <- use mmapOffset
+            fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), (toEnum . fromEnum) c)]
+            modificationBuffer .= M.insert (fromInteger off) ((toEnum . fromEnum) c) modificationBuf
 start :: IO ()
 start = void $ defaultMain app initState

@@ -41,6 +41,7 @@ data AppState = MkState
     , _fileOffset :: Integer
     , _fileSize :: Integer
     , _enterFile :: String
+    , _newFile :: String
     , _fileWrite :: Bool
     , _mmapOffset :: Integer
     , _hexOffset :: Int
@@ -61,7 +62,7 @@ instance Show MenuItem where
     show (MkMenu name _) = name
 
 initState :: AppState
-initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" False (-1) 0 empty M.empty 0 True ""
+initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" "" False (-1) 0 empty M.empty 0 True ""
 
 menuList :: [[MenuItem]]
 menuList = [ [ MkMenu "File" (Just 1)

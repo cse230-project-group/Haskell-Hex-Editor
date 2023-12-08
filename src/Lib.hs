@@ -18,6 +18,8 @@ import System.Directory
 import System.IO.MMap
 
 import qualified Data.Map as M
+import GHC.IO.IOMode
+import qualified System.IO as IO
 
 setStatus :: String -> EventM AppName AppState ()
 setStatus s = do
@@ -34,6 +36,8 @@ funcMap = M.fromList [ ("Debug Status", debugStatus)
                      , ("About", about)
                      , ("Debug Prompt", debugPrompt)
                      , ("Open ...", openPrompt)
+                     , ("Save", saveFile)
+                     , ("Save as ...", saveAsPrompt)
                      , ("Close", closeFile)
                      , ("Jump ...", jumpPrompt)
                      ]
@@ -112,6 +116,32 @@ openPrompt = do
                                   , str $ replicate width '-'
                                   ]
 
+saveAsPrompt :: EventM AppName AppState ()
+saveAsPrompt = do
+    prompt .= Just (MkPrompt
+        { _pTitle = "Save As..."
+        , _pBody = saveAsBodyWidget
+        , _pWidth = Nothing
+        , _pHeight = Just 3
+        , _pButtons = [ ("OK", saveFileAs)
+                      , ("Cancel", exitPrompt)
+                      ]
+        , _pButtonFocus = 0
+        , _pExtraHandler = Just saveAsHandler
+        })
+    where
+        saveAsBodyWidget state (width, _)  = Widget Fixed Fixed $ render $ hLimit width $ vLimit 3 $
+            let file = if state ^. newFile == ""
+                then
+                    " "
+                else
+                    state ^. newFile
+                in
+                    foldl1' (<=>) [ str "Enter file path:"
+                                  , viewport OpenInput Horizontal $ str file
+                                  , str $ replicate width '-'
+                                  ]
+
 openFile :: EventM AppName AppState ()
 openFile = do
     path <- use enterFile
@@ -126,7 +156,7 @@ openFile = do
                         then
                             setStatus $ "Empty file: " ++ path
                         else do
-                            closeFile
+                            -- closeFile
                             if writable perm
                                 then
                                     fileWrite .= True
@@ -218,6 +248,27 @@ fillBuffer h = do
             perfCount .= pCnt + 1
             --setStatus $ "loaded buffer " ++ show (pCnt + 1)
 
+saveFileAs :: EventM AppName AppState ()
+saveFileAs = do
+    path <- use enterFile
+    newPath <- use newFile
+    liftIO $ copyFile path newPath
+    enterFile .= newPath
+    newFile .= ""
+    saveFile
+    exitPrompt
+
+saveFile :: EventM AppName AppState ()
+saveFile = do
+    path <- use enterFile
+    modificationBuf <- use modificationBuffer
+    handle <- liftIO $ IO.openFile path ReadWriteMode
+    mapM (\(off, updated) -> do
+            liftIO $ IO.hSeek handle IO.AbsoluteSeek (fromIntegral off)
+            liftIO $ IO.hPutChar handle (chr $ fromIntegral $ updated))
+         (M.toList modificationBuf)
+    liftIO $ IO.hClose handle
+
 closeMmap :: EventM AppName AppState ()
 closeMmap = do
     mmapFile <- use file
@@ -241,6 +292,7 @@ closeFile = do
     mmapOffset .= -1
     perfCount .= 0
     enterOffset .= ""
+    enterFile .= ""
     setStatus "File closed"
 
 openHandler :: BrickEvent AppName () -> EventM AppName AppState ()
@@ -260,6 +312,31 @@ openHandler event = case event of
                         enterFile .= init prevFile
                         scroll
             KDel -> enterFile .= ""
+            _ -> return ()
+        _ -> return ()
+    VtyEvent EvResize {} -> scroll
+    _ -> return ()
+    where
+        scroll = let vp = viewportScroll OpenInput in
+            hScrollToEnd vp
+
+saveAsHandler :: BrickEvent AppName () -> EventM AppName AppState ()
+saveAsHandler event = case event of
+    VtyEvent (EvKey key modifier) -> case modifier of
+        [] -> case key of
+            KChar c -> do
+                prevFile <- use newFile
+                newFile .= prevFile ++ [c]
+                scroll
+            KBS -> do
+                prevFile <- use newFile
+                if prevFile == ""
+                    then
+                        return ()
+                    else do
+                        newFile .= init prevFile
+                        scroll
+            KDel -> newFile .= ""
             _ -> return ()
         _ -> return ()
     VtyEvent EvResize {} -> scroll

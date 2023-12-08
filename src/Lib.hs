@@ -9,7 +9,7 @@ import Control.Monad (unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Char (chr, isSpace, toUpper)
 import Data.List (dropWhileEnd, foldl1')
-import Data.Map qualified as M
+import qualified Data.Map as M
 import Data.Maybe
 import Data.Vector (empty, generateM, (//))
 import Foreign
@@ -17,7 +17,7 @@ import GHC.IO.IOMode
 import Graphics.Vty
 import Numeric (readHex, showHex)
 import System.Directory
-import System.IO qualified as IO
+import qualified System.IO as IO
 import System.IO.MMap
 
 setStatus :: String -> EventM AppName AppState ()

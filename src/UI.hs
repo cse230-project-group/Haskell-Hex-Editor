@@ -8,7 +8,7 @@ import Control.Monad
 import Data.Bits
 import Data.Char (chr, isHexDigit, toUpper)
 import Data.List (foldl', foldl1')
-import Data.Map qualified as M
+import qualified Data.Map as M
 import Data.Maybe
 import Data.Vector ((!), (//))
 import GHC.Num (integerLog2)

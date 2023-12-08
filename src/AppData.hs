@@ -4,7 +4,7 @@ module AppData where
 
 import Brick
 import Control.Lens (makeLenses)
-import Data.Map qualified as M
+import qualified Data.Map as M
 import Data.Vector (Vector, empty)
 import Foreign
 import Graphics.Vty

@@ -11,7 +11,7 @@ import Data.Char (chr, isSpace, toUpper)
 import Data.List (dropWhileEnd, foldl1')
 import qualified Data.Map as M
 import Data.Maybe
-import Data.Vector (empty, generateM, (//))
+import Data.Vector (Vector, empty, generateM, (//))
 import Foreign
 import GHC.IO.IOMode
 import Graphics.Vty
@@ -177,45 +177,51 @@ openFile = do
   isFile <- liftIO $ doesFileExist path
   if isFile
     then do
-      perm <- liftIO $ getPermissions path
-      if readable perm
-        then do
-          size <- liftIO $ getFileSize path
-          if size == 0
-            then setStatus $ "Empty file: " ++ path
-            else do
-              -- closeFile
-              if writable perm
-                then fileWrite .= True
-                else do
-                  fileWrite .= False
-              -- setStatus $ "No write permission: " ++ path
-              fileSize .= size
-              fileOffset .= 0
-              fileRow .= 0
-              hexOffset .= 0
-              mmapOffset .= -1
-              perfCount .= 0
-              enterOffset .= ""
-              ext <- lookupExtent Editor
-              case ext of
-                Nothing -> setStatus "internal error"
-                Just (Extent _ _ (_, h)) ->
-                  let h' = h - 1
-                   in do
-                        updateMmap h'
-                        mmapFile <- use file
-                        unless (isNothing mmapFile) $ do
-                          setStatus $
-                            "File opened: "
-                              ++ path
-                              ++ "; size: "
-                              ++ show size
-                              ++ "; mode: "
-                              ++ if writable perm
-                                then "ReadWrite"
-                                else "ReadOnly"
-                          mode .= Edit
+      rawPerm <- liftIO ((try $ getPermissions path) :: IO (Either IOError Permissions))
+      case rawPerm of
+        Left _ -> setStatus $ "Cannot check permission: " ++ path
+        Right perm ->
+          if readable perm
+            then do
+              rawSize <- liftIO ((try $ getFileSize path) :: IO (Either IOError Integer))
+              case rawSize of
+                Left _ -> setStatus $ "Cannot check size: " ++ path
+                Right size ->
+                  if size == 0
+                    then setStatus $ "Empty file: " ++ path
+                    else do
+                      -- closeFile
+                      if writable perm
+                        then fileWrite .= True
+                        else do
+                          fileWrite .= False
+                      -- setStatus $ "No write permission: " ++ path
+                      fileSize .= size
+                      fileOffset .= 0
+                      fileRow .= 0
+                      hexOffset .= 0
+                      mmapOffset .= -1
+                      perfCount .= 0
+                      enterOffset .= ""
+                      ext <- lookupExtent Editor
+                      case ext of
+                        Nothing -> setStatus "internal error"
+                        Just (Extent _ _ (_, h)) ->
+                          let h' = h - 1
+                          in do
+                                updateMmap h'
+                                mmapFile <- use file
+                                unless (isNothing mmapFile) $ do
+                                  setStatus $
+                                    "File opened: "
+                                      ++ path
+                                      ++ "; size: "
+                                      ++ show size
+                                      ++ "; mode: "
+                                      ++ if writable perm
+                                        then "ReadWrite"
+                                        else "ReadOnly"
+                                  mode .= Edit
         else setStatus $ "No read permission: " ++ path
     else setStatus $ "File not exist: " ++ path
   exitPrompt
@@ -243,7 +249,7 @@ updateMmap h = do
       oldBufferSize = case oldFile of
         Nothing -> (-1)
         Just (_, _, _, s) -> s
-   in unless (newOffset == oldOffset && bufferSize == oldBufferSize) $ do
+   in unless (newOffset == oldOffset && safeBufferSize == oldBufferSize) $ do
         closeMmap
         mmapFile <- liftIO ((try $ mmapFilePtr path perm rawOffset) :: IO (Either IOError (Ptr a, Int, Int, Int)))
         case mmapFile of
@@ -254,8 +260,6 @@ updateMmap h = do
             mmapOffset .= newOffset
             file .= Just f
             fillBuffer h
-
--- setStatus $ path ++ ", " ++ show rawOffset
 
 fillBuffer :: Int -> EventM AppName AppState ()
 fillBuffer h = do
@@ -270,41 +274,62 @@ fillBuffer h = do
       bufferSize = max defaultSize ((defaultSize - rawSize) `mod` defaultSize + rawSize)
       safeBufferSize = min bufferSize $ fromInteger $ size - mmapOff
    in do
-        buffer <- liftIO $ generateM safeBufferSize (peek . plusPtr (plusPtr ptr o))
-        let mapped = map (\(off, updated) -> (off - fromInteger mmapOff, updated)) (M.toList modificationBuf)
-            filtered = filter (\(off, _) -> 0 <= off && off < safeBufferSize) mapped
-        fileBuffer .= buffer // filtered
-        perfCount .= pCnt + 1
-
--- setStatus $ "loaded buffer " ++ show (pCnt + 1)
+        buffer <- liftIO ((try $ generateM safeBufferSize (peek . plusPtr (plusPtr ptr o))) :: IO (Either IOError (Vector Word8)))
+        case buffer of
+          Left _ -> do
+            f <- use enterFile
+            closeFile
+            mode .= Cmd
+            setStatus $ "Error reading buffer from file: " ++ f
+          Right b -> do
+            let mapped = map (\(off, updated) -> (fromInteger off - fromInteger mmapOff, updated)) (M.toList modificationBuf)
+                filtered = filter (\(off, _) -> 0 <= off && off < safeBufferSize) mapped
+            fileBuffer .= b // filtered
+            perfCount .= pCnt + 1
 
 saveFileAs :: EventM AppName AppState ()
 saveFileAs = do
   path <- use enterFile
   newPath <- use newFile
-  liftIO $ copyFile path newPath
-  enterFile .= newPath
+  res <- liftIO ((try $ copyFile path newPath) :: IO (Either IOError ()))
+  case res of
+    Left e -> setStatus $ "Cannot copy to new file: " ++ show e
+    Right _ -> do
+      enterFile .= newPath
+      saveFile
   newFile .= ""
-  saveFile
   exitPrompt
 
 saveFile :: EventM AppName AppState ()
 saveFile = do
   path <- use enterFile
   modificationBuf <- use modificationBuffer
-  handle <- liftIO $ IO.openFile path ReadWriteMode
-  mapM
-    ( \(off, updated) -> do
-        liftIO $ IO.hSeek handle IO.AbsoluteSeek (fromIntegral off)
-        liftIO $ IO.hPutChar handle (chr $ fromIntegral $ updated))
-    (M.toList modificationBuf)
-  liftIO $ IO.hClose handle
+  rawHandle <- liftIO ((try $ IO.openFile path ReadWriteMode) :: IO (Either IOError IO.Handle))
+  case rawHandle of
+    Left _ -> setStatus $ "File not saved: Cannot open file: " ++ path
+    Right handle -> do
+      res <- mapM
+        ( \(off, updated) ->
+            liftIO ((try $ IO.hSeek handle IO.AbsoluteSeek off >> IO.hPutChar handle (chr $ fromIntegral updated)) :: IO (Either IOError ())))
+        (M.toList modificationBuf)
+      case sequence res of
+        Left e -> setStatus $ "Save file error: " ++ show e
+        Right _ -> do
+          modificationBuffer .= M.empty
+          setStatus $ "File saved: " ++ path
+      _ <- liftIO ((try $ IO.hClose handle) :: IO (Either IOError ()))
+      ext <- lookupExtent Editor
+      case ext of
+        Nothing -> setStatus "internal error"
+        Just (Extent _ _ (_, h)) -> fillBuffer (h - 1)
 
 closeMmap :: EventM AppName AppState ()
 closeMmap = do
   mmapFile <- use file
   case mmapFile of
-    Just (ptr, rs, _, _) -> liftIO $ munmapFilePtr ptr rs
+    Just (ptr, rs, _, _) -> do
+      _ <- liftIO ((try $ munmapFilePtr ptr rs) :: IO (Either IOError ()))
+      return ()
     Nothing -> return ()
 
 clearBuffer :: EventM AppName AppState ()

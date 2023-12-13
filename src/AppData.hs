@@ -54,7 +54,7 @@ data AppState = MkState
     _mmapOffset :: Integer,
     _hexOffset :: Int,
     _fileBuffer :: Vector Word8,
-    _modificationBuffer :: M.Map Int Word8,
+    _modificationBuffer :: M.Map Integer Word8,
     _perfCount :: Int,
     _hexMode :: Bool,
     _enterOffset :: String

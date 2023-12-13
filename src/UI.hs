@@ -220,15 +220,20 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
                 end = min (state ^. fileSize - 1) $ begin + 15
                 g :: Integer -> Widget AppName
                 g off =
-                  let attr =
-                        if state ^. fileOffset == off
-                          then foldl1' (<+>) $ zipWith (curry fun) [0 ..] hexStr
+                  let focusAttr = if state ^. hexMode then editorFocusAttr else editorWeakFocusAttr
+                      focusModAttr = if state ^. hexMode then editorModWeakFocusAttr else editorModFocusAttr
+                      (attr, hexRaw) = case M.lookup off (state ^. modificationBuffer) of
+                        Just byte -> (if state ^. fileOffset == off
+                          then foldl1' (<+>) $ zipWith (curry $ fun (focusModAttr, editorModAttr)) [0 ..] hexStr
+                          else withAttr editorModAttr $ str hexStr
+                          , map toUpper $ showHex byte "")
+                        Nothing -> (if state ^. fileOffset == off
+                          then foldl1' (<+>) $ zipWith (curry $ fun (focusAttr, editorAttr)) [0 ..] hexStr
                           else withAttr editorAttr $ str hexStr
-                      focusAttr = if state ^. hexMode then editorFocusAttr else editorWeakFocusAttr
-                      hexRaw = map toUpper $ showHex ((state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset))) ""
+                          , map toUpper $ showHex ((state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset))) "")
                       hexStr = if length hexRaw == 1 then '0' : hexRaw else hexRaw
-                      fun (i, c) =
-                        (if i == state ^. hexOffset then withAttr focusAttr . visible else withAttr editorAttr) $
+                      fun (fAttr, nAttr) (i, c) =
+                        (if i == state ^. hexOffset then withAttr fAttr . visible else withAttr nAttr) $
                           str [c]
                    in attr
              in foldl1' (<+>) $ g begin : map (padLeft (Pad 1) . g) [begin + 1 .. end]
@@ -260,12 +265,17 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
                 end = min (state ^. fileSize - 1) $ begin + 15
                 g :: Integer -> Widget AppName
                 g off =
-                  let attr =
-                        if state ^. fileOffset == off
+                  let focusAttr = if state ^. hexMode then editorWeakFocusAttr else editorFocusAttr
+                      focusModAttr = if state ^. hexMode then editorModWeakFocusAttr else editorModFocusAttr
+                      (attr, asciiVal) = case M.lookup off (state ^. modificationBuffer) of
+                        Just byte -> (if state ^. fileOffset == off
+                          then withAttr focusModAttr . visible
+                          else withAttr editorModAttr
+                          , chr $ fromIntegral byte)
+                        Nothing -> (if state ^. fileOffset == off
                           then withAttr focusAttr . visible
                           else withAttr editorAttr
-                      focusAttr = if state ^. hexMode then editorWeakFocusAttr else editorFocusAttr
-                      asciiVal = chr $ fromIntegral $ (state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset))
+                          , chr $ fromIntegral $ (state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset)))
                       asciiStr = if asciiVal >= ' ' && asciiVal <= '~' then [asciiVal] else "."
                    in attr $ str asciiStr
              in foldl1' (<+>) $ map g [begin .. end]
@@ -548,13 +558,15 @@ editHandler event = case event of
       off <- use fileOffset
       hexOff <- use hexOffset
       mmapOff <- use mmapOffset
-      let current = fileBuf ! fromInteger (off - mmapOff)
+      let current = case M.lookup off modificationBuf of
+            Just byte -> byte
+            Nothing -> fileBuf ! fromInteger (off - mmapOff)
           updated =
             if hexOff == 1
               then current .&. 0xF0 .|. fromIntegral c
               else current .&. 0x0F .|. fromIntegral c `shiftL` 4
       fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), updated)]
-      modificationBuffer .= M.insert (fromInteger off) updated modificationBuf
+      modificationBuffer .= M.insert off updated modificationBuf
     alterAscii :: Char -> EventM AppName AppState ()
     alterAscii c = do
       fileBuf <- use fileBuffer
@@ -562,7 +574,7 @@ editHandler event = case event of
       off <- use fileOffset
       mmapOff <- use mmapOffset
       fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), (toEnum . fromEnum) c)]
-      modificationBuffer .= M.insert (fromInteger off) ((toEnum . fromEnum) c) modificationBuf
+      modificationBuffer .= M.insert off ((toEnum . fromEnum) c) modificationBuf
 
 start :: IO ()
 start = void $ defaultMain app initState

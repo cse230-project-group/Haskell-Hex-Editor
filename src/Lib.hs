@@ -11,7 +11,8 @@ import Data.Char (chr, isSpace, toUpper)
 import Data.List (dropWhileEnd, foldl1')
 import qualified Data.Map as M
 import Data.Maybe
-import Data.Vector (Vector, empty, generateM, (//))
+import qualified Data.Vector as V
+import Data.Vector (Vector, (//))
 import Foreign
 import GHC.IO.IOMode
 import Graphics.Vty
@@ -19,6 +20,7 @@ import Numeric (readHex, showHex)
 import System.Directory
 import qualified System.IO as IO
 import System.IO.MMap
+import Data.Word (Word8)
 
 setStatus :: String -> EventM AppName AppState ()
 setStatus s = do
@@ -41,7 +43,8 @@ funcMap =
       ("Save", saveFile),
       ("Save as ...", saveAsPrompt),
       ("Close", closeFile),
-      ("Jump ...", jumpPrompt)
+      ("Jump ...", jumpPrompt),
+      ("Find ...", findPrompt)
     ]
 
 debugStatus :: EventM AppName AppState ()
@@ -171,6 +174,40 @@ saveAsPrompt = do
                       str $ replicate width '-'
                     ]
 
+findPrompt :: EventM AppName AppState ()
+findPrompt = do
+  prompt
+    .= Just
+      ( MkPrompt
+          { _pTitle = "Find and Replace",
+            _pBody = findBodyWidget,
+            _pWidth = Nothing,
+            _pHeight = Just 3,
+            _pButtons =
+              [ ("OK", findStringOff),
+                ("Cancel", exitPrompt)
+              ],
+            _pButtonFocus = 0,
+            _pExtraHandler = Just findAndReplaceHandler
+          }
+      )
+  where
+    findBodyWidget state (width, _) =
+      Widget Fixed Fixed $
+        render $
+          hLimit width $
+            vLimit 3 $
+              let fStr =
+                    if state ^. findString == ""
+                      then " "
+                      else state ^. findString
+               in foldl1'
+                    (<=>)
+                    [ str "Enter the string to search:",
+                      viewport OpenInput Horizontal $ str fStr,
+                      str $ replicate width '-'
+                    ]
+
 openFile :: EventM AppName AppState ()
 openFile = do
   path <- use enterFile
@@ -274,7 +311,7 @@ fillBuffer h = do
       bufferSize = max defaultSize ((defaultSize - rawSize) `mod` defaultSize + rawSize)
       safeBufferSize = min bufferSize $ fromInteger $ size - mmapOff
    in do
-        buffer <- liftIO ((try $ generateM safeBufferSize (peek . plusPtr (plusPtr ptr o))) :: IO (Either IOError (Vector Word8)))
+        buffer <- liftIO ((try $ V.generateM safeBufferSize (peek . plusPtr (plusPtr ptr o))) :: IO (Either IOError (Vector Word8)))
         case buffer of
           Left _ -> do
             f <- use enterFile
@@ -323,6 +360,50 @@ saveFile = do
         Nothing -> setStatus "internal error"
         Just (Extent _ _ (_, h)) -> fillBuffer (h - 1)
 
+findStringOff :: EventM AppName AppState ()
+findStringOff = do
+    currOff <- use fileOffset
+    mOff <- use mmapOffset
+    findFromStart currOff mOff True False
+
+findFromStart :: Integer -> Integer -> Bool -> Bool -> EventM AppName AppState ()
+findFromStart originOff originMOff isFst isFromBegin= do
+  strToFind <- use findString
+  curFileBuf <- use fileBuffer
+  mmpOff <- use mmapOffset
+
+  let startIdx = ( originOff) - ( mmpOff)
+      vecToFind = stringToWord8Vector strToFind
+      idx = if not isFst then isSubVector vecToFind curFileBuf 0 else isSubVector vecToFind curFileBuf (fromInteger (startIdx + 1))
+  prevFileOff <- use fileOffset
+  setStatus $ "current File Offset: " ++ (show prevFileOff) ++ "!current mmapOff: " ++ (show mmpOff) ++ "! isFST?" ++ (show isFst)
+
+  case idx of
+    Just i -> jumpOffset ( mmpOff + (fromIntegral i))
+    Nothing -> do
+      curmOff <- use mmapOffset
+      jumpOffset (curmOff + fromIntegral ((V.length curFileBuf)))
+      curFileOff <- use fileOffset
+      if (curFileOff == prevFileOff) then
+        if (isFromBegin) then jumpOffset originOff
+        else do
+          jumpOffset 0
+          findFromStart originOff originMOff False True
+      else
+        if (isFromBegin && curFileOff > originMOff) then jumpOffset originOff
+        else findFromStart originOff originMOff False isFromBegin
+
+stringToWord8Vector :: String -> V.Vector Word8
+stringToWord8Vector = V.fromList . map (fromIntegral . fromEnum)
+
+isSubVector :: V.Vector Word8 -> V.Vector Word8 -> Int -> Maybe Int
+isSubVector subVec vec checkFrom = checkSub 0
+  where
+    checkSub ids
+      | ids + checkFrom + V.length subVec > V.length vec || ids + checkFrom >= V.length vec = Nothing -- Subvector won't fit anymore
+      | V.slice (ids + checkFrom) (V.length subVec) vec == subVec = Just (ids + checkFrom) -- Subvector found
+      | otherwise = checkSub (ids + 1) -- Move to the next position
+
 closeMmap :: EventM AppName AppState ()
 closeMmap = do
   mmapFile <- use file
@@ -333,7 +414,7 @@ closeMmap = do
     Nothing -> return ()
 
 clearBuffer :: EventM AppName AppState ()
-clearBuffer = fileBuffer .= empty
+clearBuffer = fileBuffer .= V.empty
 
 closeFile :: EventM AppName AppState ()
 closeFile = do
@@ -392,6 +473,31 @@ saveAsHandler event = case event of
             newFile .= init prevFile
             scroll
       KDel -> newFile .= ""
+      _ -> return ()
+    _ -> return ()
+  VtyEvent EvResize {} -> scroll
+  _ -> return ()
+  where
+    scroll =
+      let vp = viewportScroll OpenInput
+       in hScrollToEnd vp
+
+findAndReplaceHandler :: BrickEvent AppName () -> EventM AppName AppState ()
+findAndReplaceHandler event = case event of
+  VtyEvent (EvKey key modifier) -> case modifier of
+    [] -> case key of
+      KChar c -> do
+        toFind <- use findString
+        findString .= toFind ++ [c]
+        scroll
+      KBS -> do
+        toFind <- use findString
+        if toFind == ""
+          then return ()
+          else do
+            findString .= init toFind
+            scroll
+      KDel -> findString .= ""
       _ -> return ()
     _ -> return ()
   VtyEvent EvResize {} -> scroll

@@ -57,7 +57,9 @@ data AppState = MkState
     _modificationBuffer :: M.Map Integer Word8,
     _perfCount :: Int,
     _hexMode :: Bool,
-    _enterOffset :: String
+    _enterOffset :: String,
+    _findString :: String,
+    _replaceString :: String
   }
 
 makeLenses ''AppPrompt
@@ -70,7 +72,7 @@ instance Show MenuItem where
   show (MkMenu name _) = name
 
 initState :: AppState
-initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" "" False (-1) 0 empty M.empty 0 True ""
+initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" "" False (-1) 0 empty M.empty 0 True "" "" ""
 
 menuList :: [[MenuItem]]
 menuList =
@@ -96,7 +98,8 @@ menuList =
       MkMenu "Debug Long String .............................. 1 .............. 2 ...... 3 .. 4  5 End" Nothing,
       MkMenu "Debug Prompt" Nothing
     ],
-    [ MkMenu "Jump ..." Nothing
+    [ MkMenu "Jump ..." Nothing,
+      MkMenu "Find ..." Nothing
     ]
   ]
 

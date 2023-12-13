@@ -15,6 +15,7 @@ import GHC.Num (integerLog2)
 import Graphics.Vty
 import Lib
 import Numeric (readHex, showHex)
+import qualified Data.Vector as V
 
 app :: App AppState () AppName
 app =

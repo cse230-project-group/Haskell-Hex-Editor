@@ -565,11 +565,15 @@ editHandler event = case event of
             if hexOff == 1
               then current .&. 0xF0 .|. fromIntegral c
               else current .&. 0x0F .|. fromIntegral c `shiftL` 4
+      fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), updated)]
       modificationBuffer .= M.insert off updated modificationBuf
     alterAscii :: Char -> EventM AppName AppState ()
     alterAscii c = do
+      fileBuf <- use fileBuffer
       modificationBuf <- use modificationBuffer
       off <- use fileOffset
+      mmapOff <- use mmapOffset
+      fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), (toEnum . fromEnum) c)]
       modificationBuffer .= M.insert off ((toEnum . fromEnum) c) modificationBuf
 
 start :: IO ()

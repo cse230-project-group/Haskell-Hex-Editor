@@ -11,7 +11,7 @@ import Data.Char (chr, isSpace, toUpper)
 import Data.List (dropWhileEnd, foldl1')
 import qualified Data.Map as M
 import Data.Maybe
-import Data.Vector (Vector, empty, generateM)
+import Data.Vector (Vector, empty, generateM, (//))
 import Foreign
 import GHC.IO.IOMode
 import Graphics.Vty
@@ -267,6 +267,7 @@ fillBuffer h = do
   pCnt <- use perfCount
   size <- use fileSize
   mmapOff <- use mmapOffset
+  modificationBuf <- use modificationBuffer
   let (ptr, _, o, _) = fromMaybe undefined mmapFile
       rawSize = 48 * (h - 1)
       defaultSize = 12 * 1024
@@ -281,9 +282,10 @@ fillBuffer h = do
             mode .= Cmd
             setStatus $ "Error reading buffer from file: " ++ f
           Right b -> do
-            fileBuffer .= b
+            let mapped = map (\(off, updated) -> (fromInteger off - fromInteger mmapOff, updated)) (M.toList modificationBuf)
+                filtered = filter (\(off, _) -> 0 <= off && off < safeBufferSize) mapped
+            fileBuffer .= b // filtered
             perfCount .= pCnt + 1
-            -- setStatus $ "loaded buffer " ++ show (pCnt + 1)
 
 saveFileAs :: EventM AppName AppState ()
 saveFileAs = do

@@ -4,7 +4,7 @@ module AppData where
 
 import Brick
 import Control.Lens (makeLenses)
-import qualified Data.Map as M
+import Data.Map qualified as M
 import Data.Vector (Vector, empty)
 import Foreign
 import Graphics.Vty
@@ -51,6 +51,7 @@ data AppState = MkState
     _fileRow :: Integer,
     _fileOffset :: Integer,
     _fileSize :: Integer,
+    _onDiskSize :: Integer,
     _enterFile :: String,
     _currFile :: String,
     _newFile :: String,
@@ -61,6 +62,7 @@ data AppState = MkState
     _modificationBuffer :: M.Map Integer Word8,
     _perfCount :: Int,
     _hexMode :: Bool,
+    _appendMode :: Bool,
     _enterOffset :: String,
     _findString :: String,
     _findBuffer :: Vector Word8,
@@ -79,19 +81,23 @@ instance Show MenuItem where
   show (MkMenu name _) = name
 
 initState :: AppState
-initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" "" "" False (-1) 0 empty M.empty 0 True "" "" empty "" empty True
+initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 0 "" "" "" False (-1) 0 empty M.empty 0 True False "" "" empty "" empty True
 
 menuList :: [[MenuItem]]
 menuList =
   [ [ MkMenu "File" (Just 1),
-      MkMenu "Edit" (Just 4),
-      MkMenu "Help" (Just 2)
+      MkMenu "Edit" (Just 2),
+      MkMenu "Help" (Just 3)
     ],
     [ MkMenu "Open ..." Nothing,
       MkMenu "Save" Nothing,
       MkMenu "Save as ..." Nothing,
       MkMenu "Close" Nothing,
       MkMenu "Exit" Nothing
+    ],
+    [ MkMenu "Jump ..." Nothing,
+      MkMenu "Find Hex ..." Nothing,
+      MkMenu "Find ASCII ..." Nothing
     ],
     [ MkMenu "Debug ->" (Just 3),
       MkMenu "About" Nothing
@@ -104,10 +110,6 @@ menuList =
       MkMenu "Debug 5" Nothing,
       MkMenu "Debug Long String .............................. 1 .............. 2 ...... 3 .. 4  5 End" Nothing,
       MkMenu "Debug Prompt" Nothing
-    ],
-    [ MkMenu "Jump ..." Nothing,
-      MkMenu "Find Hex ..." Nothing,
-      MkMenu "Find ASCII ..." Nothing
     ]
   ]
 

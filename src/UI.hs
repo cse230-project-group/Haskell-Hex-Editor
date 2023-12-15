@@ -8,7 +8,7 @@ import Control.Monad
 import Data.Bits
 import Data.Char (chr, isHexDigit, toUpper)
 import Data.List (foldl', foldl1')
-import qualified Data.Map as M
+import Data.Map qualified as M
 import Data.Maybe
 import Data.Vector ((!), (//))
 import GHC.Num (integerLog2)
@@ -223,14 +223,18 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
                   let focusAttr = if state ^. hexMode then editorFocusAttr else editorWeakFocusAttr
                       focusModAttr = if state ^. hexMode then editorModFocusAttr else editorModWeakFocusAttr
                       (attr, hexRaw) = case M.lookup off (state ^. modificationBuffer) of
-                        Just byte -> (if state ^. fileOffset == off
-                          then foldl1' (<+>) $ zipWith (curry $ fun (focusModAttr, editorModAttr)) [0 ..] hexStr
-                          else withAttr editorModAttr $ str hexStr
-                          , map toUpper $ showHex byte "")
-                        Nothing -> (if state ^. fileOffset == off
-                          then foldl1' (<+>) $ zipWith (curry $ fun (focusAttr, editorAttr)) [0 ..] hexStr
-                          else withAttr editorAttr $ str hexStr
-                          , map toUpper $ showHex ((state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset))) "")
+                        Just byte ->
+                          ( if state ^. fileOffset == off
+                              then foldl1' (<+>) $ zipWith (curry $ fun (focusModAttr, editorModAttr)) [0 ..] hexStr
+                              else withAttr editorModAttr $ str hexStr,
+                            map toUpper $ showHex byte ""
+                          )
+                        Nothing ->
+                          ( if state ^. fileOffset == off
+                              then foldl1' (<+>) $ zipWith (curry $ fun (focusAttr, editorAttr)) [0 ..] hexStr
+                              else withAttr editorAttr $ str hexStr,
+                            map toUpper $ showHex ((state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset))) ""
+                          )
                       hexStr = if length hexRaw == 1 then '0' : hexRaw else hexRaw
                       fun (fAttr, nAttr) (i, c) =
                         (if i == state ^. hexOffset then withAttr fAttr . visible else withAttr nAttr) $
@@ -268,14 +272,18 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
                   let focusAttr = if state ^. hexMode then editorWeakFocusAttr else editorFocusAttr
                       focusModAttr = if state ^. hexMode then editorModWeakFocusAttr else editorModFocusAttr
                       (attr, asciiVal) = case M.lookup off (state ^. modificationBuffer) of
-                        Just byte -> (if state ^. fileOffset == off
-                          then withAttr focusModAttr . visible
-                          else withAttr editorModAttr
-                          , chr $ fromIntegral byte)
-                        Nothing -> (if state ^. fileOffset == off
-                          then withAttr focusAttr . visible
-                          else withAttr editorAttr
-                          , chr $ fromIntegral $ (state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset)))
+                        Just byte ->
+                          ( if state ^. fileOffset == off
+                              then withAttr focusModAttr . visible
+                              else withAttr editorModAttr,
+                            chr $ fromIntegral byte
+                          )
+                        Nothing ->
+                          ( if state ^. fileOffset == off
+                              then withAttr focusAttr . visible
+                              else withAttr editorAttr,
+                            chr $ fromIntegral $ (state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset))
+                          )
                       asciiStr = if asciiVal >= ' ' && asciiVal <= '~' then [asciiVal] else "."
                    in attr $ str asciiStr
              in foldl1' (<+>) $ map g [begin .. end]
@@ -337,7 +345,7 @@ cmdHandler (VtyEvent (EvKey key modifier)) = case modifier of
           menuLayers .= ls
           mFocus <- use menuFocus
           let _ : fs = mFocus
-            in menuFocus .= fs
+           in menuFocus .= fs
     KUp -> focusChange (-1)
     KLeft -> focusChange (-1)
     KDown -> focusChange 1
@@ -447,25 +455,25 @@ promptHandler event@(VtyEvent (EvKey key modifier)) = case modifier of
     KEnter -> do
       p <- use prompt
       let p' = fromMaybe undefined p
-        in do
-          (_, f) <- nestEventM p' $ do
-            focus <- use pButtonFocus
-            btns <- use pButtons
-            return $ snd $ btns !! focus
-          f
+       in do
+            (_, f) <- nestEventM p' $ do
+              focus <- use pButtonFocus
+              btns <- use pButtons
+              return $ snd $ btns !! focus
+            f
     KEsc -> prompt .= Nothing
     KUp ->
       let vp = viewportScroll PromptBody
-      in vScrollBy vp (-1)
+       in vScrollBy vp (-1)
     KDown ->
       let vp = viewportScroll PromptBody
-      in vScrollBy vp 1
+       in vScrollBy vp 1
     KLeft ->
       let vp = viewportScroll PromptBody
-      in hScrollBy vp (-1)
+       in hScrollBy vp (-1)
     KRight ->
       let vp = viewportScroll PromptBody
-      in hScrollBy vp 1
+       in hScrollBy vp 1
     _ -> passExtraHandler event
   _ -> passExtraHandler event
 promptHandler event = passExtraHandler event
@@ -500,23 +508,38 @@ editHandler event = case event of
       KChar '\t' -> do
         old <- use hexMode
         hexMode .= not old
+      KChar '`' -> do
+        old <- use appendMode
+        appendMode .= not old
+        unless old $ do
+          size <- use fileSize
+          jumpOffset size
+          hexOffset .= 1
       KLeft -> do
-        off <- use fileOffset
-        hexOff <- use hexOffset
-        hm <- use hexMode
-        if hm
-          then unless (off == 0 && hexOff == 0) $ alterHexOffset (-1)
-          else hexOffset .= 0 >> alterOffset (-1)
+        am <- use appendMode
+        unless am $ do
+          off <- use fileOffset
+          hexOff <- use hexOffset
+          hm <- use hexMode
+          if hm
+            then unless (off == 0 && hexOff == 0) $ alterHexOffset (-1)
+            else hexOffset .= 0 >> alterOffset (-1)
       KRight -> do
-        off <- use fileOffset
-        hexOff <- use hexOffset
-        size <- use fileSize
-        hm <- use hexMode
-        if hm
-          then unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
-          else hexOffset .= 0 >> alterOffset 1
-      KUp -> alterOffset (-16)
-      KDown -> alterOffset 16
+        am <- use appendMode
+        unless am $ do
+          off <- use fileOffset
+          hexOff <- use hexOffset
+          size <- use fileSize
+          hm <- use hexMode
+          if hm
+            then unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
+            else hexOffset .= 0 >> alterOffset 1
+      KUp -> do
+        am <- use appendMode
+        unless am $ alterOffset (-16)
+      KDown -> do
+        am <- use appendMode
+        unless am $ alterOffset 16
       KHome -> do
         off <- use fileOffset
         alterOffset (-(off `mod` 16))
@@ -532,11 +555,12 @@ editHandler event = case event of
         md <- use hexMode
         if md
           then do
-            when (isHexDigit ch) $ alterHex (fst (head (readHex [ch])))
-            unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
+            when (isHexDigit ch) $ do
+              alterHex (fst (head (readHex [ch])))
+              unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
           else do
             alterAscii ch
-            hexOffset .= 0 >> alterOffset 1
+            alterHexOffset 1
       _ -> return ()
     _ -> return ()
   VtyEvent EvResize {} -> alterOffset 0
@@ -555,22 +579,6 @@ editHandler event = case event of
       case ext of
         Nothing -> setStatus "internal error"
         Just (Extent _ _ (_, h)) -> alterOffset $ delta * 16 * fromIntegral (h - 1)
-    alterHex :: Int -> EventM AppName AppState ()
-    alterHex c = do
-      fileBuf <- use fileBuffer
-      modificationBuf <- use modificationBuffer
-      off <- use fileOffset
-      hexOff <- use hexOffset
-      mmapOff <- use mmapOffset
-      let current = case M.lookup off modificationBuf of
-            Just byte -> byte
-            Nothing -> fileBuf ! fromInteger (off - mmapOff)
-          updated =
-            if hexOff == 1
-              then current .&. 0xF0 .|. fromIntegral c
-              else current .&. 0x0F .|. fromIntegral c `shiftL` 4
-      fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), updated)]
-      modificationBuffer .= M.insert off updated modificationBuf
 
 shortcutHandler :: BrickEvent AppName () -> (BrickEvent AppName () -> EventM AppName AppState ()) -> EventM AppName AppState ()
 shortcutHandler event nextHandler = case event of
@@ -578,15 +586,15 @@ shortcutHandler event nextHandler = case event of
     [x] -> case x of
       MCtrl ->
         case key of
-        KChar 'f' -> findPrompt
-        KChar 'x' -> findHexPrompt
-        KChar 'o' -> openPrompt
-        KChar 's' -> saveFile
-        KChar 'a' -> saveAsPrompt
-        KChar 'w' -> closeFile
-        KChar 'p' -> jumpPrompt
-        KChar 'q' -> exit
-        _ -> nextHandler event
+          KChar 'f' -> findPrompt
+          KChar 'x' -> findHexPrompt
+          KChar 'o' -> openPrompt
+          KChar 's' -> saveFile
+          KChar 'a' -> saveAsPrompt
+          KChar 'w' -> closeFile
+          KChar 'p' -> jumpPrompt
+          KChar 'q' -> exit
+          _ -> nextHandler event
       _ -> nextHandler event
     _ -> nextHandler event
   _ -> nextHandler event

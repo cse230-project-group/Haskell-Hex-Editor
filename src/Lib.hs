@@ -20,7 +20,6 @@ import Numeric (readHex, showHex)
 import System.Directory
 import qualified System.IO as IO
 import System.IO.MMap
-import Data.Word (Word8)
 
 setStatus :: String -> EventM AppName AppState ()
 setStatus s = do

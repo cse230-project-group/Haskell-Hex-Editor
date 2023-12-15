@@ -504,15 +504,18 @@ editHandler event = case event of
     [] -> case key of
       KEsc -> mode .= Cmd
       KChar '\t' -> do
+        am <- use appendMode
         old <- use hexMode
         hexMode .= not old
+        when (am && not old) $ hexOffset .= 1
       KChar '`' -> do
+        hm <- use hexMode
         old <- use appendMode
         appendMode .= not old
         unless old $ do
           size <- use fileSize
           jumpOffset size
-          hexOffset .= 1
+          hexOffset .= if hm then 1 else 0
       KLeft -> do
         am <- use appendMode
         unless am $ do
@@ -539,14 +542,21 @@ editHandler event = case event of
         am <- use appendMode
         unless am $ alterOffset 16
       KHome -> do
+        am <- use appendMode
         off <- use fileOffset
-        alterOffset (-(off `mod` 16))
+        unless am $ alterOffset (-(off `mod` 16))
       KEnd -> do
+        am <- use appendMode
         off <- use fileOffset
-        alterOffset (15 - (off `mod` 16))
-      KPageUp -> alterOffsetPage (-1)
-      KPageDown -> alterOffsetPage 1
+        unless am $ alterOffset (15 - (off `mod` 16))
+      KPageUp -> do
+        am <- use appendMode
+        unless am $ alterOffsetPage (-1)
+      KPageDown -> do
+        am <- use appendMode
+        unless am $ alterOffsetPage 1
       KChar ch -> do
+        am <- use appendMode
         off <- use fileOffset
         hexOff <- use hexOffset
         size <- use fileSize
@@ -555,10 +565,11 @@ editHandler event = case event of
           then do
             when (isHexDigit ch) $ do
               alterHex (fst (head (readHex [ch])))
-              unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
+              unless (not am && off == size - 1 && hexOff == 1) $ alterHexOffset 1
           else do
             alterAscii ch
-            alterHexOffset 1
+            hexOffset .= 0
+            alterOffset 1
       _ -> return ()
     _ -> return ()
   VtyEvent EvResize {} -> alterOffset 0

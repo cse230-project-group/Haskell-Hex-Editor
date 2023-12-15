@@ -23,6 +23,7 @@ data AppName
   | PromptBtn String
   | OpenInput
   | JumpInput
+  | ReplaceInput
   | HexView
   | AsciiView
   deriving (Eq, Ord, Show)
@@ -59,7 +60,10 @@ data AppState = MkState
     _hexMode :: Bool,
     _enterOffset :: String,
     _findString :: String,
-    _replaceString :: String
+    _findBuffer :: Vector Word8,
+    _replaceString :: String,
+    _replaceBuffer :: Vector Word8,
+    _findReplaceMode :: Bool
   }
 
 makeLenses ''AppPrompt
@@ -72,7 +76,7 @@ instance Show MenuItem where
   show (MkMenu name _) = name
 
 initState :: AppState
-initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" "" False (-1) 0 empty M.empty 0 True "" "" ""
+initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 "" "" False (-1) 0 empty M.empty 0 True "" "" empty "" empty True
 
 menuList :: [[MenuItem]]
 menuList =
@@ -99,7 +103,8 @@ menuList =
       MkMenu "Debug Prompt" Nothing
     ],
     [ MkMenu "Jump ..." Nothing,
-      MkMenu "Find ..." Nothing
+      MkMenu "Find Hex ..." Nothing,
+      MkMenu "Find ASCII ..." Nothing
     ]
   ]
 

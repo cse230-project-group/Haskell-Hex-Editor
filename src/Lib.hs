@@ -20,6 +20,7 @@ import Numeric (readHex, showHex)
 import System.Directory
 import qualified System.IO as IO
 import System.IO.MMap
+import Data.Word (Word8)
 
 setStatus :: String -> EventM AppName AppState ()
 setStatus s = do
@@ -43,7 +44,8 @@ funcMap =
       ("Save as ...", saveAsPrompt),
       ("Close", closeFile),
       ("Jump ...", jumpPrompt),
-      ("Find ...", findPrompt)
+      ("Find Hex ...", findHexPrompt),
+      ("Find ASCII ...", findPrompt)
     ]
 
 debugStatus :: EventM AppName AppState ()
@@ -181,9 +183,10 @@ findPrompt = do
           { _pTitle = "Find and Replace",
             _pBody = findBodyWidget,
             _pWidth = Nothing,
-            _pHeight = Just 3,
+            _pHeight = Just 6,
             _pButtons =
-              [ ("OK", findStringOff),
+              [ ("Find", findStringOff),
+                ("Replace", replaceHandler),
                 ("Cancel", exitPrompt)
               ],
             _pButtonFocus = 0,
@@ -195,17 +198,66 @@ findPrompt = do
       Widget Fixed Fixed $
         render $
           hLimit width $
-            vLimit 3 $
+            vLimit 6 $
               let fStr =
                     if state ^. findString == ""
                       then " "
                       else state ^. findString
-               in foldl1'
-                    (<=>)
-                    [ str "Enter the string to search:",
-                      viewport OpenInput Horizontal $ str fStr,
-                      str $ replicate width '-'
-                    ]
+                  rStr =
+                    if state ^. replaceString == ""
+                      then " "
+                      else state ^. replaceString
+                in foldl1'
+                      (<=>)
+                      [ str "Find: (Press Ctrl + Any Key to switch between find and replace)",
+                        vLimit 1 $ viewport OpenInput Horizontal $ str fStr,
+                        str $ replicate width '-',
+                        str "Replace with:",
+                        vLimit 1 $ viewport ReplaceInput Horizontal $ str rStr,
+                        str $ replicate width '-'
+                      ]
+
+findHexPrompt :: EventM AppName AppState ()
+findHexPrompt = do
+  prompt
+    .= Just
+      ( MkPrompt
+          { _pTitle = "Find and Replace",
+            _pBody = findBodyWidget,
+            _pWidth = Nothing,
+            _pHeight = Just 6,
+            _pButtons =
+              [ ("Find", findHexOff),
+                ("Replace", replaceHexHandler),
+                ("Cancel", exitPrompt)
+              ],
+            _pButtonFocus = 0,
+            _pExtraHandler = Just findAndReplaceHandler
+          }
+      )
+  where
+    findBodyWidget state (width, _) =
+      Widget Fixed Fixed $
+        render $
+          hLimit width $
+            vLimit 6 $
+              let fStr =
+                    if state ^. findString == ""
+                      then " "
+                      else state ^. findString
+                  rStr =
+                    if state ^. replaceString == ""
+                      then " "
+                      else state ^. replaceString
+                in foldl1'
+                      (<=>)
+                      [ str "Find: (Press Ctrl + Any Key to switch between find and replace)",
+                        vLimit 1 $ viewport OpenInput Horizontal $ str fStr,
+                        str $ replicate width '-',
+                        str "Replace with:",
+                        vLimit 1 $ viewport ReplaceInput Horizontal $ str rStr,
+                        str $ replicate width '-'
+                      ]
 
 openFile :: EventM AppName AppState ()
 openFile = do
@@ -333,6 +385,7 @@ saveFileAs = do
     Right _ -> do
       enterFile .= newPath
       saveFile
+      openFile
   newFile .= ""
   exitPrompt
 
@@ -361,19 +414,113 @@ saveFile = do
 
 findStringOff :: EventM AppName AppState ()
 findStringOff = do
-    currOff <- use fileOffset
-    mOff <- use mmapOffset
-    findFromStart currOff mOff True False
+  mmapFile <- use file
+  case mmapFile of
+    Nothing -> setStatus "Cannot find Hex: no file opened"
+    Just _ -> do
+      findStr <- use findString
+      findBuffer .= stringToWord8Vector findStr
+      currOff <- use fileOffset
+      mOff <- use mmapOffset
+      findFromStart currOff mOff True False
+
+findHexOff :: EventM AppName AppState ()
+findHexOff = do
+  mmapFile <- use file
+  case mmapFile of
+    Nothing -> setStatus "Cannot find Hex: no file opened"
+    Just _ -> do
+      str <- use findString
+      let trimOff = trimStr str
+          result = readHex trimOff
+       in case result of
+        [] -> setStatus $ "Cannot parse hex input: " ++ trimOff
+        _ ->
+          let (offset, rest) = head result
+            in if rest == "" then
+              if length trimOff `mod` 2 == 1
+                  then setStatus $ "Cannot parse hex input: " ++ trimOff
+                  else do
+                    findBuffer .= convertHex trimOff
+                    currOff <- use fileOffset
+                    mOff <- use mmapOffset
+                    findFromStart currOff mOff True False
+              else setStatus $ "Cannot parse partial hex input: " ++ rest
+
+convertHex :: String -> Vector Word8
+convertHex [] = V.empty
+convertHex [_] = undefined
+convertHex (x:y:xs) = V.singleton (fst $ head $ readHex $ x : [y]) V.++ convertHex xs
+
+replaceHandler :: EventM AppName AppState ()
+replaceHandler = do
+    findStringOff
+    curFileOff <- use fileOffset
+    curMOff <- use mmapOffset
+    findbuf <- use findBuffer
+    curFileBuf <- use fileBuffer
+    when (V.slice (fromInteger (curFileOff - curMOff)) (V.length findbuf) curFileBuf == findbuf) $ replaceAtIndex 0
+
+
+replaceAtIndex :: Int -> EventM AppName AppState ()
+replaceAtIndex idx = do
+                      rstr <- use replaceString
+                      if idx >= length rstr then return ()
+                      else do
+                        alterAscii (rstr !! idx)
+                        hexOffset .= 0 >> alterOffset 1
+                        replaceAtIndex (idx + 1)
+
+replaceHexHandler :: EventM AppName AppState ()
+replaceHexHandler = do
+  findHexOff
+  rstr <- use replaceString
+  let trimOff = trimStr rstr
+      result = readHex trimOff
+    in case result of
+    [] -> setStatus $ "Cannot parse hex input: " ++ trimOff
+    _ ->
+      let (_, rest) = head result
+        in if rest == "" then
+          if length trimOff `mod` 2 == 1
+              then setStatus $ "Cannot parse hex input: " ++ trimOff
+              else do
+                replaceString .= word8VectorToString (convertHex trimOff)
+                curFileOff <- use fileOffset
+                curMOff <- use mmapOffset
+                findbuf <- use findBuffer
+                curFileBuf <- use fileBuffer
+                when (V.slice (fromInteger (curFileOff - curMOff)) (V.length findbuf) curFileBuf == findbuf) $ replaceAtIndex 0
+                replaceString .= rstr
+        else setStatus $ "Cannot parse hex input: " ++ rest
+
+word8VectorToString :: V.Vector Word8 -> String
+word8VectorToString vec = V.foldl (++) "" (V.map (\n -> [(chr . fromIntegral) n]) vec)
+
+alterAscii :: Char -> EventM AppName AppState ()
+alterAscii c = do
+  fileBuf <- use fileBuffer
+  modificationBuf <- use modificationBuffer
+  off <- use fileOffset
+  mmapOff <- use mmapOffset
+  when (fromInteger (off - mmapOff) < V.length fileBuf) $ do
+                                                fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), (toEnum . fromEnum) c)]
+  modificationBuffer .= M.insert off ((toEnum . fromEnum) c) modificationBuf
+
+alterOffset :: Integer -> EventM AppName AppState ()
+alterOffset delta = do
+  off <- use fileOffset
+  jumpOffset $ off + delta
+
 
 findFromStart :: Integer -> Integer -> Bool -> Bool -> EventM AppName AppState ()
 findFromStart originOff originMOff isFst isFromBegin= do
-  strToFind <- use findString
+  findBuf <- use findBuffer
   curFileBuf <- use fileBuffer
   mmpOff <- use mmapOffset
 
   let startIdx = ( originOff) - ( mmpOff)
-      vecToFind = stringToWord8Vector strToFind
-      idx = if not isFst then isSubVector vecToFind curFileBuf 0 else isSubVector vecToFind curFileBuf (fromInteger (startIdx + 1))
+      idx = if not isFst then isSubVector findBuf curFileBuf 0 else isSubVector findBuf curFileBuf (fromInteger (startIdx + 1))
   prevFileOff <- use fileOffset
   setStatus $ "current File Offset: " ++ (show prevFileOff) ++ "!current mmapOff: " ++ (show mmpOff) ++ "! isFST?" ++ (show isFst)
 
@@ -429,6 +576,7 @@ closeFile = do
   perfCount .= 0
   enterOffset .= ""
   enterFile .= ""
+  modificationBuffer .= M.empty
   setStatus "File closed"
 
 openHandler :: BrickEvent AppName () -> EventM AppName AppState ()
@@ -484,19 +632,45 @@ saveAsHandler event = case event of
 findAndReplaceHandler :: BrickEvent AppName () -> EventM AppName AppState ()
 findAndReplaceHandler event = case event of
   VtyEvent (EvKey key modifier) -> case modifier of
+    [x] -> do
+              when (x == MCtrl) $ do
+                                originalMode <- use findReplaceMode
+                                findReplaceMode .= not originalMode
+                                setStatus $ "Shifted" ++ (show originalMode)
+
     [] -> case key of
       KChar c -> do
-        toFind <- use findString
-        findString .= toFind ++ [c]
-        scroll
+        frMode <- use findReplaceMode
+        if frMode then do
+          toFind <- use findString
+          findString .= toFind ++ [c]
+          scroll
+        else do
+          toReplace <- use replaceString
+          replaceString .= toReplace ++ [c]
+          -- scroll
       KBS -> do
-        toFind <- use findString
-        if toFind == ""
-          then return ()
+        frMode <- use findReplaceMode
+        if frMode then do
+          toFind <- use findString
+          if toFind == ""
+            then return ()
+            else do
+              findString .= init toFind
+              scroll
           else do
-            findString .= init toFind
-            scroll
-      KDel -> findString .= ""
+            toReplace <- use replaceString
+            if toReplace == ""
+              then return ()
+              else do
+                replaceString .= init toReplace
+                -- scroll
+      KDel -> do
+        fmode <- use findReplaceMode
+        if fmode then
+          findString .= ""
+        else
+          replaceString .= ""
       _ -> return ()
     _ -> return ()
   VtyEvent EvResize {} -> scroll

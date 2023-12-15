@@ -9,17 +9,18 @@ import Control.Monad (unless, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Char (chr, isSpace, toUpper)
 import Data.List (dropWhileEnd, foldl1')
-import Data.Map qualified as M
 import Data.Maybe
-import Data.Vector (Vector, (//))
-import Data.Vector qualified as V
+import Data.Vector (Vector)
 import Foreign
 import GHC.IO.IOMode
 import Graphics.Vty
 import Numeric (readHex, showHex)
 import System.Directory
-import System.IO qualified as IO
 import System.IO.MMap
+
+import qualified Data.Map as M
+import qualified Data.Vector as V
+import qualified System.IO as IO
 
 setStatus :: String -> EventM AppName AppState ()
 setStatus s = do
@@ -386,9 +387,9 @@ fillBuffer h oldOff oldSz = do
             if safeBufferSize < bufferSize
               then do
                 let padding = V.replicate bufferSize 0
-                fileBuffer .= (b // filtered) V.++ padding
+                fileBuffer .= (b V.// filtered) V.++ padding
               else do
-                fileBuffer .= b // filtered
+                fileBuffer .= b V.// filtered
             perfCount .= pCnt + 1
 
 saveFileAs :: EventM AppName AppState ()
@@ -541,7 +542,7 @@ alterHex c = do
         | hexOff == 1 = fromIntegral c `shiftL` 4
         | otherwise = current .&. 0xF0 .|. fromIntegral c
       alterOff = if am && hexOff == 1 then off + 1 else off
-  fileBuffer .= fileBuf // [(fromInteger (alterOff - mmapOff), updated)]
+  fileBuffer .= fileBuf V.// [(fromInteger (alterOff - mmapOff), updated)]
   modificationBuffer .= M.insert alterOff updated modificationBuf
   when (am && hexOff == 1) $ do
     fileOffset .= off + 1
@@ -559,7 +560,7 @@ alterAscii c = do
   size <- use fileSize
   when (fromInteger (off - mmapOff) < V.length fileBuf) $ do
     let alterOff = if am then off + 1 else off
-    fileBuffer .= fileBuf // [(fromInteger (alterOff - mmapOff), (toEnum . fromEnum) c)]
+    fileBuffer .= fileBuf V.// [(fromInteger (alterOff - mmapOff), (toEnum . fromEnum) c)]
     modificationBuffer .= M.insert (fromInteger alterOff) ((toEnum . fromEnum) c) modificationBuf
     when am $ do
       fileOffset .= off + 1
@@ -606,9 +607,9 @@ isSubVector :: V.Vector Word8 -> V.Vector Word8 -> Int -> Maybe Int
 isSubVector subVec vec checkFrom = checkSub 0
   where
     checkSub ids
-      | ids + checkFrom + V.length subVec > V.length vec || ids + checkFrom >= V.length vec = Nothing -- Subvector won't fit anymore
-      | V.slice (ids + checkFrom) (V.length subVec) vec == subVec = Just (ids + checkFrom) -- Subvector found
-      | otherwise = checkSub (ids + 1) -- Move to the next position
+      | ids + checkFrom + V.length subVec > V.length vec || ids + checkFrom >= V.length vec = Nothing
+      | V.slice (ids + checkFrom) (V.length subVec) vec == subVec = Just (ids + checkFrom)
+      | otherwise = checkSub (ids + 1)
 
 closeMmap :: EventM AppName AppState ()
 closeMmap = do

@@ -4,10 +4,12 @@ module AppData where
 
 import Brick
 import Control.Lens (makeLenses)
-import Data.Map qualified as M
-import Data.Vector (Vector, empty)
+import Data.Vector (Vector)
 import Foreign
 import Graphics.Vty
+
+import qualified Data.Map as M
+import qualified Data.Vector as V
 
 data AppMode = Cmd | Edit
   deriving (Eq)
@@ -81,7 +83,7 @@ instance Show MenuItem where
   show (MkMenu name _) = name
 
 initState :: AppState
-initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 0 "" "" "" False (-1) 0 empty M.empty 0 True False "" "" empty "" empty True
+initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothing 0 0 0 0 "" "" "" False (-1) 0 V.empty M.empty 0 True False "" "" V.empty "" V.empty True
 
 menuList :: [[MenuItem]]
 menuList =

@@ -5,16 +5,16 @@ import Brick hiding (zoom)
 import Brick.Widgets.Center
 import Control.Lens
 import Control.Monad
-import Data.Bits
 import Data.Char (chr, isHexDigit, toUpper)
 import Data.List (foldl', foldl1')
-import Data.Map qualified as M
 import Data.Maybe
-import Data.Vector ((!), (//))
 import GHC.Num (integerLog2)
 import Graphics.Vty
 import Lib
 import Numeric (readHex, showHex)
+
+import qualified Data.Map as M
+import qualified Data.Vector as V
 
 app :: App AppState () AppName
 app =
@@ -192,7 +192,6 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
                   if maxRow < minRow
                     then str $ replicate (width - 2) ' '
                     else padTop (Pad 1) $ foldl1' (<=>) $ map f [minRow .. maxRow]
-    -- render $ str (show (height, currRow, minRow, maxRow, rawWidth, widthLimit, width))
     hexHeader = foldl1' (<+>) $ f (head lst) : map (padLeft (Pad 1) . f) (tail lst)
       where
         lst = map (\n -> (n, ' ' : map toUpper (showHex n ""))) [0 .. 15]
@@ -233,7 +232,7 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
                           ( if state ^. fileOffset == off
                               then foldl1' (<+>) $ zipWith (curry $ fun (focusAttr, editorAttr)) [0 ..] hexStr
                               else withAttr editorAttr $ str hexStr,
-                            map toUpper $ showHex ((state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset))) ""
+                            map toUpper $ showHex ((state ^. fileBuffer) V.! fromInteger (off - (state ^. mmapOffset))) ""
                           )
                       hexStr = if length hexRaw == 1 then '0' : hexRaw else hexRaw
                       fun (fAttr, nAttr) (i, c) =
@@ -282,7 +281,7 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
                           ( if state ^. fileOffset == off
                               then withAttr focusAttr . visible
                               else withAttr editorAttr,
-                            chr $ fromIntegral $ (state ^. fileBuffer) ! fromInteger (off - (state ^. mmapOffset))
+                            chr $ fromIntegral $ (state ^. fileBuffer) V.! fromInteger (off - (state ^. mmapOffset))
                           )
                       asciiStr = if asciiVal >= ' ' && asciiVal <= '~' then [asciiVal] else "."
                    in attr $ str asciiStr
@@ -356,7 +355,6 @@ cmdHandler (VtyEvent (EvKey key modifier)) = case modifier of
     _ -> setStatus $ "Unknown key: " ++ show key
   _ -> return ()
 cmdHandler (VtyEvent EvResize {}) = do
-  -- refreshStatus
   refreshBtn 0
   mLayers <- use menuLayers
   mapM_

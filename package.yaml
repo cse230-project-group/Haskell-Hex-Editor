@@ -63,3 +63,7 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - haskell-hex-editor
+    - QuickCheck
+    - tasty
+    - tasty-hunit
+    - tasty-quickcheck

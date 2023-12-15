@@ -15,6 +15,7 @@ import GHC.Num (integerLog2)
 import Graphics.Vty
 import Lib
 import Numeric (readHex, showHex)
+import qualified Data.Vector as V
 
 app :: App AppState () AppName
 app =
@@ -489,48 +490,54 @@ promptFocusChange i = do
 
 editHandler :: BrickEvent AppName () -> EventM AppName AppState ()
 editHandler event = case event of
-  VtyEvent (EvKey key modifier) -> case key of
-    KEsc -> mode .= Cmd
-    KChar '\t' -> do
-      old <- use hexMode
-      hexMode .= not old
-    KLeft -> do
-      off <- use fileOffset
-      hexOff <- use hexOffset
-      hm <- use hexMode
-      if hm
-        then unless (off == 0 && hexOff == 0) $ alterHexOffset (-1)
-        else hexOffset .= 0 >> alterOffset (-1)
-    KRight -> do
-      off <- use fileOffset
-      hexOff <- use hexOffset
-      size <- use fileSize
-      hm <- use hexMode
-      if hm
-        then unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
-        else hexOffset .= 0 >> alterOffset 1
-    KUp -> alterOffset (-16)
-    KDown -> alterOffset 16
-    KHome -> do
-      off <- use fileOffset
-      alterOffset (-(off `mod` 16))
-    KEnd -> do
-      off <- use fileOffset
-      alterOffset (15 - (off `mod` 16))
-    KPageUp -> alterOffsetPage (-1)
-    KPageDown -> alterOffsetPage 1
-    KChar ch -> do
-      off <- use fileOffset
-      hexOff <- use hexOffset
-      size <- use fileSize
-      md <- use hexMode
-      if md
-        then do
-          when (isHexDigit ch) $ alterHex (fst (head (readHex [ch])))
-          unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
-        else do
-          alterAscii ch
-          hexOffset .= 0 >> alterOffset 1
+  VtyEvent (EvKey key modifier) -> case modifier of
+    [x] -> 
+      when (x == MCtrl) $ do
+         case key of
+          KChar 's' -> findPrompt
+          _ -> return ()
+    [] ->   case key of
+      KEsc -> mode .= Cmd
+      KChar '\t' -> do
+        old <- use hexMode
+        hexMode .= not old
+      KLeft -> do
+        off <- use fileOffset
+        hexOff <- use hexOffset
+        hm <- use hexMode
+        if hm
+          then unless (off == 0 && hexOff == 0) $ alterHexOffset (-1)
+          else hexOffset .= 0 >> alterOffset (-1)
+      KRight -> do
+        off <- use fileOffset
+        hexOff <- use hexOffset
+        size <- use fileSize
+        hm <- use hexMode
+        if hm
+          then unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
+          else hexOffset .= 0 >> alterOffset 1
+      KUp -> alterOffset (-16)
+      KDown -> alterOffset 16
+      KHome -> do
+        off <- use fileOffset
+        alterOffset (-(off `mod` 16))
+      KEnd -> do
+        off <- use fileOffset
+        alterOffset (15 - (off `mod` 16))
+      KPageUp -> alterOffsetPage (-1)
+      KPageDown -> alterOffsetPage 1
+      KChar ch -> do
+        off <- use fileOffset
+        hexOff <- use hexOffset
+        size <- use fileSize
+        md <- use hexMode
+        if md
+          then do
+            when (isHexDigit ch) $ alterHex (fst (head (readHex [ch])))
+            unless (off == size - 1 && hexOff == 1) $ alterHexOffset 1
+          else do
+            alterAscii ch
+            hexOffset .= 0 >> alterOffset 1
     _ -> return ()
   VtyEvent EvResize {} -> alterOffset 0
   _ -> return ()
@@ -543,9 +550,6 @@ editHandler event = case event of
        in do
             hexOffset .= newHexOff
             unless (deltaOff == 0) $ alterOffset deltaOff
-    alterOffset delta = do
-      off <- use fileOffset
-      jumpOffset $ off + delta
     alterOffsetPage delta = do
       ext <- lookupExtent Editor
       case ext of
@@ -567,14 +571,6 @@ editHandler event = case event of
               else current .&. 0x0F .|. fromIntegral c `shiftL` 4
       fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), updated)]
       modificationBuffer .= M.insert off updated modificationBuf
-    alterAscii :: Char -> EventM AppName AppState ()
-    alterAscii c = do
-      fileBuf <- use fileBuffer
-      modificationBuf <- use modificationBuffer
-      off <- use fileOffset
-      mmapOff <- use mmapOffset
-      fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), (toEnum . fromEnum) c)]
-      modificationBuffer .= M.insert off ((toEnum . fromEnum) c) modificationBuf
 
 start :: IO ()
 start = void $ defaultMain app initState

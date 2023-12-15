@@ -20,7 +20,6 @@ import Numeric (readHex, showHex)
 import System.Directory
 import qualified System.IO as IO
 import System.IO.MMap
-import Data.Word (Word8)
 
 setStatus :: String -> EventM AppName AppState ()
 setStatus s = do
@@ -108,156 +107,134 @@ debugPrompt =
       ]
 
 openPrompt :: EventM AppName AppState ()
-openPrompt = do
-  prompt
-    .= Just
-      ( MkPrompt
-          { _pTitle = "Open File",
-            _pBody = openBodyWidget,
-            _pWidth = Nothing,
-            _pHeight = Just 3,
-            _pButtons =
-              [ ("OK", openFile),
-                ("Cancel", exitPrompt)
-              ],
-            _pButtonFocus = 0,
-            _pExtraHandler = Just openHandler
-          }
-      )
+openPrompt = prompt
+  .= Just
+    ( MkPrompt
+        { _pTitle = "Open File",
+          _pBody = openBodyWidget,
+          _pWidth = Nothing,
+          _pHeight = Just 3,
+          _pButtons =
+            [ ("OK", openFile),
+              ("Cancel", exitPrompt)
+            ],
+          _pButtonFocus = 0,
+          _pExtraHandler = Just openHandler
+        }
+    )
   where
     openBodyWidget state (width, _) =
       Widget Fixed Fixed $
         render $
           hLimit width $
             vLimit 3 $
-              let file =
-                    if state ^. enterFile == ""
-                      then " "
-                      else state ^. enterFile
+              let file = state ^. enterFile
                in foldl1'
                     (<=>)
                     [ str "Enter file path:",
-                      viewport OpenInput Horizontal $ str file,
+                      vLimit 1 $ viewport OpenInput Horizontal $ str file,
                       str $ replicate width '-'
                     ]
 
 saveAsPrompt :: EventM AppName AppState ()
-saveAsPrompt = do
-  prompt
-    .= Just
-      ( MkPrompt
-          { _pTitle = "Save As...",
-            _pBody = saveAsBodyWidget,
-            _pWidth = Nothing,
-            _pHeight = Just 3,
-            _pButtons =
-              [ ("OK", saveFileAs),
-                ("Cancel", exitPrompt)
-              ],
-            _pButtonFocus = 0,
-            _pExtraHandler = Just saveAsHandler
-          }
-      )
+saveAsPrompt = prompt
+  .= Just
+    ( MkPrompt
+        { _pTitle = "Save As...",
+          _pBody = saveAsBodyWidget,
+          _pWidth = Nothing,
+          _pHeight = Just 3,
+          _pButtons =
+            [ ("OK", saveFileAs),
+              ("Cancel", exitPrompt)
+            ],
+          _pButtonFocus = 0,
+          _pExtraHandler = Just saveAsHandler
+        }
+    )
   where
     saveAsBodyWidget state (width, _) =
       Widget Fixed Fixed $
         render $
           hLimit width $
             vLimit 3 $
-              let file =
-                    if state ^. newFile == ""
-                      then " "
-                      else state ^. newFile
+              let file = state ^. newFile
                in foldl1'
                     (<=>)
                     [ str "Enter file path:",
-                      viewport OpenInput Horizontal $ str file,
+                      vLimit 1 $ viewport SaveInput Horizontal $ str file,
                       str $ replicate width '-'
                     ]
 
 findPrompt :: EventM AppName AppState ()
-findPrompt = do
-  prompt
-    .= Just
-      ( MkPrompt
-          { _pTitle = "Find and Replace",
-            _pBody = findBodyWidget,
-            _pWidth = Nothing,
-            _pHeight = Just 6,
-            _pButtons =
-              [ ("Find", findStringOff),
-                ("Replace", replaceHandler),
-                ("Cancel", exitPrompt)
-              ],
-            _pButtonFocus = 0,
-            _pExtraHandler = Just findAndReplaceHandler
-          }
-      )
+findPrompt = prompt
+  .= Just
+    ( MkPrompt
+        { _pTitle = "Find and Replace (Ascii)",
+          _pBody = findBodyWidget,
+          _pWidth = Nothing,
+          _pHeight = Just 6,
+          _pButtons =
+            [ ("Find", findStringOff),
+              ("Replace", replaceHandler),
+              ("Cancel", exitPrompt)
+            ],
+          _pButtonFocus = 0,
+          _pExtraHandler = Just findAndReplaceHandler
+        }
+    )
   where
     findBodyWidget state (width, _) =
       Widget Fixed Fixed $
         render $
           hLimit width $
             vLimit 6 $
-              let fStr =
-                    if state ^. findString == ""
-                      then " "
-                      else state ^. findString
-                  rStr =
-                    if state ^. replaceString == ""
-                      then " "
-                      else state ^. replaceString
+              let fStr = state ^. findString
+                  rStr = state ^. replaceString
                 in foldl1'
-                      (<=>)
-                      [ str "Find: (Press Ctrl + Any Key to switch between find and replace)",
-                        vLimit 1 $ viewport OpenInput Horizontal $ str fStr,
-                        str $ replicate width '-',
-                        str "Replace with:",
-                        vLimit 1 $ viewport ReplaceInput Horizontal $ str rStr,
-                        str $ replicate width '-'
-                      ]
+                    (<=>)
+                    [ str "Find: (Press Ctrl + Any Key to switch between find and replace)",
+                      vLimit 1 $ viewport FindInput Horizontal $ str fStr,
+                      str $ replicate width '-',
+                      str "Replace with:",
+                      vLimit 1 $ viewport ReplaceInput Horizontal $ str rStr,
+                      str $ replicate width '-'
+                    ]
 
 findHexPrompt :: EventM AppName AppState ()
-findHexPrompt = do
-  prompt
-    .= Just
-      ( MkPrompt
-          { _pTitle = "Find and Replace",
-            _pBody = findBodyWidget,
-            _pWidth = Nothing,
-            _pHeight = Just 6,
-            _pButtons =
-              [ ("Find", findHexOff),
-                ("Replace", replaceHexHandler),
-                ("Cancel", exitPrompt)
-              ],
-            _pButtonFocus = 0,
-            _pExtraHandler = Just findAndReplaceHandler
-          }
-      )
+findHexPrompt = prompt
+  .= Just
+    ( MkPrompt
+        { _pTitle = "Find and Replace (Hex)",
+          _pBody = findBodyWidget,
+          _pWidth = Nothing,
+          _pHeight = Just 6,
+          _pButtons =
+            [ ("Find", findHexOff),
+              ("Replace", replaceHexHandler),
+              ("Cancel", exitPrompt)
+            ],
+          _pButtonFocus = 0,
+          _pExtraHandler = Just findAndReplaceHandler
+        }
+    )
   where
     findBodyWidget state (width, _) =
       Widget Fixed Fixed $
         render $
           hLimit width $
             vLimit 6 $
-              let fStr =
-                    if state ^. findString == ""
-                      then " "
-                      else state ^. findString
-                  rStr =
-                    if state ^. replaceString == ""
-                      then " "
-                      else state ^. replaceString
+              let fStr = state ^. findString
+                  rStr = state ^. replaceString
                 in foldl1'
-                      (<=>)
-                      [ str "Find: (Press Ctrl + Any Key to switch between find and replace)",
-                        vLimit 1 $ viewport OpenInput Horizontal $ str fStr,
-                        str $ replicate width '-',
-                        str "Replace with:",
-                        vLimit 1 $ viewport ReplaceInput Horizontal $ str rStr,
-                        str $ replicate width '-'
-                      ]
+                    (<=>)
+                    [ str "Find: (Press Ctrl + Any Key to switch between find and replace)",
+                      vLimit 1 $ viewport FindInput Horizontal $ str fStr,
+                      str $ replicate width '-',
+                      str "Replace with:",
+                      vLimit 1 $ viewport ReplaceInput Horizontal $ str rStr,
+                      str $ replicate width '-'
+                    ]
 
 openFile :: EventM AppName AppState ()
 openFile = do
@@ -278,13 +255,15 @@ openFile = do
                   if size == 0
                     then setStatus $ "Empty file: " ++ path
                     else do
-                      -- closeFile
                       if writable perm
                         then fileWrite .= True
-                        else do
-                          fileWrite .= False
-                      -- setStatus $ "No write permission: " ++ path
+                        else fileWrite .= False
+                      clearBuffer
+                      closeMmap
+                      clearModBuffer
+                      file .= Nothing
                       fileSize .= size
+                      currFile .= path
                       fileOffset .= 0
                       fileRow .= 0
                       hexOffset .= 0
@@ -317,7 +296,7 @@ openFile = do
 updateMmap :: Int -> EventM AppName AppState ()
 updateMmap h = do
   offset <- use fileOffset
-  path <- use enterFile
+  path <- use currFile
   canWrite <- use fileWrite
   oldOffset <- use mmapOffset
   oldFile <- use file
@@ -327,7 +306,7 @@ updateMmap h = do
       bufferSize = max defaultSize ((defaultSize - rawSize) `mod` defaultSize + rawSize)
       splitSize = bufferSize `div` 3
       safeOffset = max 0 $ offset - fromIntegral splitSize
-      newOffset = safeOffset - (safeOffset `mod` fromIntegral splitSize)
+      newOffset = safeOffset - safeOffset `mod` fromIntegral splitSize
       safeBufferSize = min bufferSize $ fromInteger $ size - newOffset
       rawOffset = Just (fromInteger newOffset, safeBufferSize)
       perm =
@@ -347,51 +326,59 @@ updateMmap h = do
           Right f -> do
             mmapOffset .= newOffset
             file .= Just f
-            fillBuffer h
+            fillBuffer h oldOffset oldBufferSize
 
-fillBuffer :: Int -> EventM AppName AppState ()
-fillBuffer h = do
+fillBuffer :: Int -> Integer -> Int -> EventM AppName AppState ()
+fillBuffer h oldOff oldSz = do
   mmapFile <- use file
   pCnt <- use perfCount
   size <- use fileSize
   mmapOff <- use mmapOffset
   modificationBuf <- use modificationBuffer
+  oldBuf <- use fileBuffer
   let (ptr, _, o, _) = fromMaybe undefined mmapFile
       rawSize = 48 * (h - 1)
       defaultSize = 12 * 1024
       bufferSize = max defaultSize ((defaultSize - rawSize) `mod` defaultSize + rawSize)
       safeBufferSize = min bufferSize $ fromInteger $ size - mmapOff
+      deltaOff = mmapOff - oldOff
    in do
-        buffer <- liftIO ((try $ V.generateM safeBufferSize (peek . plusPtr (plusPtr ptr o))) :: IO (Either IOError (Vector Word8)))
+        buffer <- liftIO ((try $ V.generateM safeBufferSize (\i ->
+          let oldId = fromIntegral i + deltaOff in
+            if oldId >= 0 && oldId < fromIntegral oldSz
+              then
+                return $ oldBuf V.! fromInteger oldId
+              else
+                peek $ plusPtr (plusPtr ptr o) i)) :: IO (Either IOError (Vector Word8)))
         case buffer of
           Left _ -> do
-            f <- use enterFile
+            f <- use currFile
             closeFile
             mode .= Cmd
             setStatus $ "Error reading buffer from file: " ++ f
           Right b -> do
-            let mapped = map (\(off, updated) -> (fromInteger off - fromInteger mmapOff, updated)) (M.toList modificationBuf)
+            let mapped = map (\(off, updated) -> (fromInteger (off - mmapOff), updated)) (M.toList modificationBuf)
                 filtered = filter (\(off, _) -> 0 <= off && off < safeBufferSize) mapped
             fileBuffer .= b // filtered
             perfCount .= pCnt + 1
+            --setStatus $ "fillBuffer called times: " ++ show (pCnt + 1)
 
 saveFileAs :: EventM AppName AppState ()
 saveFileAs = do
-  path <- use enterFile
+  path <- use currFile
   newPath <- use newFile
   res <- liftIO ((try $ copyFile path newPath) :: IO (Either IOError ()))
   case res of
     Left e -> setStatus $ "Cannot copy to new file: " ++ show e
     Right _ -> do
-      enterFile .= newPath
+      currFile .= newPath
       saveFile
-      openFile
   newFile .= ""
   exitPrompt
 
 saveFile :: EventM AppName AppState ()
 saveFile = do
-  path <- use enterFile
+  path <- use currFile
   modificationBuf <- use modificationBuffer
   rawHandle <- liftIO ((try $ IO.openFile path ReadWriteMode) :: IO (Either IOError IO.Handle))
   case rawHandle of
@@ -407,16 +394,13 @@ saveFile = do
           modificationBuffer .= M.empty
           setStatus $ "File saved: " ++ path
       _ <- liftIO ((try $ IO.hClose handle) :: IO (Either IOError ()))
-      ext <- lookupExtent Editor
-      case ext of
-        Nothing -> setStatus "internal error"
-        Just (Extent _ _ (_, h)) -> fillBuffer (h - 1)
+      return ()
 
 findStringOff :: EventM AppName AppState ()
 findStringOff = do
   mmapFile <- use file
   case mmapFile of
-    Nothing -> setStatus "Cannot find Hex: no file opened"
+    Nothing -> setStatus "Cannot find Ascii: no file opened"
     Just _ -> do
       findStr <- use findString
       findBuffer .= stringToWord8Vector findStr
@@ -454,13 +438,16 @@ convertHex (x:y:xs) = V.singleton (fst $ head $ readHex $ x : [y]) V.++ convertH
 
 replaceHandler :: EventM AppName AppState ()
 replaceHandler = do
-    findStringOff
-    curFileOff <- use fileOffset
-    curMOff <- use mmapOffset
-    findbuf <- use findBuffer
-    curFileBuf <- use fileBuffer
-    when (V.slice (fromInteger (curFileOff - curMOff)) (V.length findbuf) curFileBuf == findbuf) $ replaceAtIndex 0
-
+  mmapFile <- use file
+  case mmapFile of
+    Nothing -> setStatus "Cannot replace Ascii: no file opened"
+    Just _ -> do
+      findStringOff
+      curFileOff <- use fileOffset
+      curMOff <- use mmapOffset
+      findbuf <- use findBuffer
+      curFileBuf <- use fileBuffer
+      when (V.slice (fromInteger (curFileOff - curMOff)) (V.length findbuf) curFileBuf == findbuf) $ replaceAtIndex 0
 
 replaceAtIndex :: Int -> EventM AppName AppState ()
 replaceAtIndex idx = do
@@ -473,26 +460,30 @@ replaceAtIndex idx = do
 
 replaceHexHandler :: EventM AppName AppState ()
 replaceHexHandler = do
-  findHexOff
-  rstr <- use replaceString
-  let trimOff = trimStr rstr
-      result = readHex trimOff
-    in case result of
-    [] -> setStatus $ "Cannot parse hex input: " ++ trimOff
-    _ ->
-      let (_, rest) = head result
-        in if rest == "" then
-          if length trimOff `mod` 2 == 1
-              then setStatus $ "Cannot parse hex input: " ++ trimOff
-              else do
-                replaceString .= word8VectorToString (convertHex trimOff)
-                curFileOff <- use fileOffset
-                curMOff <- use mmapOffset
-                findbuf <- use findBuffer
-                curFileBuf <- use fileBuffer
-                when (V.slice (fromInteger (curFileOff - curMOff)) (V.length findbuf) curFileBuf == findbuf) $ replaceAtIndex 0
-                replaceString .= rstr
-        else setStatus $ "Cannot parse hex input: " ++ rest
+  mmapFile <- use file
+  case mmapFile of
+    Nothing -> setStatus "Cannot replace Hex: no file opened"
+    Just _ -> do
+      findHexOff
+      rstr <- use replaceString
+      let trimOff = trimStr rstr
+          result = readHex trimOff
+        in case result of
+        [] -> setStatus $ "Cannot parse hex input: " ++ trimOff
+        _ ->
+          let (_, rest) = head result
+            in if rest == "" then
+              if length trimOff `mod` 2 == 1
+                  then setStatus $ "Cannot parse hex input: " ++ trimOff
+                  else do
+                    replaceString .= word8VectorToString (convertHex trimOff)
+                    curFileOff <- use fileOffset
+                    curMOff <- use mmapOffset
+                    findbuf <- use findBuffer
+                    curFileBuf <- use fileBuffer
+                    when (V.slice (fromInteger (curFileOff - curMOff)) (V.length findbuf) curFileBuf == findbuf) $ replaceAtIndex 0
+                    replaceString .= rstr
+            else setStatus $ "Cannot parse hex input: " ++ rest
 
 word8VectorToString :: V.Vector Word8 -> String
 word8VectorToString vec = V.foldl (++) "" (V.map (\n -> [(chr . fromIntegral) n]) vec)
@@ -503,8 +494,7 @@ alterAscii c = do
   modificationBuf <- use modificationBuffer
   off <- use fileOffset
   mmapOff <- use mmapOffset
-  when (fromInteger (off - mmapOff) < V.length fileBuf) $ do
-                                                fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), (toEnum . fromEnum) c)]
+  when (fromInteger (off - mmapOff) < V.length fileBuf) $ fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), (toEnum . fromEnum) c)]
   modificationBuffer .= M.insert off ((toEnum . fromEnum) c) modificationBuf
 
 alterOffset :: Integer -> EventM AppName AppState ()
@@ -514,29 +504,30 @@ alterOffset delta = do
 
 
 findFromStart :: Integer -> Integer -> Bool -> Bool -> EventM AppName AppState ()
-findFromStart originOff originMOff isFst isFromBegin= do
+findFromStart originOff originMOff isFst isFromBegin = do
   findBuf <- use findBuffer
   curFileBuf <- use fileBuffer
   mmpOff <- use mmapOffset
 
-  let startIdx = ( originOff) - ( mmpOff)
+  let startIdx = originOff - mmpOff
       idx = if not isFst then isSubVector findBuf curFileBuf 0 else isSubVector findBuf curFileBuf (fromInteger (startIdx + 1))
   prevFileOff <- use fileOffset
-  setStatus $ "current File Offset: " ++ (show prevFileOff) ++ "!current mmapOff: " ++ (show mmpOff) ++ "! isFST?" ++ (show isFst)
+  --setStatus $ "current File Offset: " ++ show prevFileOff ++ "!current mmapOff: " ++ show mmpOff ++ "! isFST?" ++ show isFst
 
   case idx of
-    Just i -> jumpOffset ( mmpOff + (fromIntegral i))
+    Just i -> let off = (mmpOff + fromIntegral i) in
+      jumpOffset off >> setStatus ("Found at offset: " ++ show off)
     Nothing -> do
       curmOff <- use mmapOffset
-      jumpOffset (curmOff + fromIntegral ((V.length curFileBuf)))
+      jumpOffset (curmOff + fromIntegral (V.length curFileBuf))
       curFileOff <- use fileOffset
-      if (curFileOff == prevFileOff) then
-        if (isFromBegin) then jumpOffset originOff
+      if curFileOff == prevFileOff then
+        if isFromBegin then jumpOffset originOff >> setStatus "Not found"
         else do
           jumpOffset 0
           findFromStart originOff originMOff False True
       else
-        if (isFromBegin && curFileOff > originMOff) then jumpOffset originOff
+        if isFromBegin && curFileOff > originMOff then jumpOffset originOff >> setStatus "Not found"
         else findFromStart originOff originMOff False isFromBegin
 
 stringToWord8Vector :: String -> V.Vector Word8
@@ -562,10 +553,14 @@ closeMmap = do
 clearBuffer :: EventM AppName AppState ()
 clearBuffer = fileBuffer .= V.empty
 
+clearModBuffer :: EventM AppName AppState ()
+clearModBuffer = modificationBuffer .= M.empty
+
 closeFile :: EventM AppName AppState ()
 closeFile = do
   clearBuffer
   closeMmap
+  clearModBuffer
   file .= Nothing
   fileWrite .= False
   fileSize .= 0
@@ -576,7 +571,9 @@ closeFile = do
   perfCount .= 0
   enterOffset .= ""
   enterFile .= ""
+  currFile .= ""
   modificationBuffer .= M.empty
+  mode .= Cmd
   setStatus "File closed"
 
 openHandler :: BrickEvent AppName () -> EventM AppName AppState ()
@@ -626,45 +623,36 @@ saveAsHandler event = case event of
   _ -> return ()
   where
     scroll =
-      let vp = viewportScroll OpenInput
+      let vp = viewportScroll SaveInput
        in hScrollToEnd vp
 
 findAndReplaceHandler :: BrickEvent AppName () -> EventM AppName AppState ()
 findAndReplaceHandler event = case event of
   VtyEvent (EvKey key modifier) -> case modifier of
-    [x] -> do
-              when (x == MCtrl) $ do
-                                originalMode <- use findReplaceMode
-                                findReplaceMode .= not originalMode
-                                setStatus $ "Shifted" ++ (show originalMode)
-
+    [x] -> when (x == MCtrl) $ do
+      originalMode <- use findReplaceMode
+      findReplaceMode .= not originalMode
+      --setStatus $ "Shifted" ++ (show originalMode)
     [] -> case key of
       KChar c -> do
         frMode <- use findReplaceMode
         if frMode then do
           toFind <- use findString
           findString .= toFind ++ [c]
-          scroll
         else do
           toReplace <- use replaceString
           replaceString .= toReplace ++ [c]
-          -- scroll
+        scroll
       KBS -> do
         frMode <- use findReplaceMode
         if frMode then do
           toFind <- use findString
-          if toFind == ""
-            then return ()
-            else do
-              findString .= init toFind
-              scroll
-          else do
-            toReplace <- use replaceString
-            if toReplace == ""
-              then return ()
-              else do
-                replaceString .= init toReplace
-                -- scroll
+          unless (toFind == "") $
+            findString .= init toFind >> scroll
+        else do
+          toReplace <- use replaceString
+          unless (toReplace == "") $
+            replaceString .= init toReplace >> scroll
       KDel -> do
         fmode <- use findReplaceMode
         if fmode then
@@ -677,8 +665,10 @@ findAndReplaceHandler event = case event of
   _ -> return ()
   where
     scroll =
-      let vp = viewportScroll OpenInput
-       in hScrollToEnd vp
+      let vp1 = viewportScroll FindInput
+          vp2 = viewportScroll ReplaceInput
+        in
+          hScrollToEnd vp1 >> hScrollToEnd vp2
 
 jumpOffset :: Integer -> EventM AppName AppState ()
 jumpOffset offset = do
@@ -704,36 +694,32 @@ jumpOffset offset = do
                   updateMmap (h - 1)
 
 jumpPrompt :: EventM AppName AppState ()
-jumpPrompt = do
-  prompt
-    .= Just
-      ( MkPrompt
-          { _pTitle = "Jump",
-            _pBody = jumpWidget,
-            _pWidth = Nothing,
-            _pHeight = Just 3,
-            _pButtons =
-              [ ("OK", jumpEnterOffset),
-                ("Cancel", exitPrompt)
-              ],
-            _pButtonFocus = 0,
-            _pExtraHandler = Just jumpHandler
-          }
-      )
+jumpPrompt = prompt
+  .= Just
+    ( MkPrompt
+        { _pTitle = "Jump",
+          _pBody = jumpWidget,
+          _pWidth = Nothing,
+          _pHeight = Just 3,
+          _pButtons =
+            [ ("OK", jumpEnterOffset),
+              ("Cancel", exitPrompt)
+            ],
+          _pButtonFocus = 0,
+          _pExtraHandler = Just jumpHandler
+        }
+    )
   where
     jumpWidget state (width, _) =
       Widget Fixed Fixed $
         render $
           hLimit width $
             vLimit 3 $
-              let offset =
-                    if state ^. enterOffset == ""
-                      then " "
-                      else state ^. enterOffset
+              let offset = state ^. enterOffset
                in foldl1'
                     (<=>)
                     [ str "Enter offset in hex:",
-                      viewport JumpInput Horizontal $ str offset,
+                      vLimit 1 $ viewport JumpInput Horizontal $ str offset,
                       str $ replicate width '-'
                     ]
 

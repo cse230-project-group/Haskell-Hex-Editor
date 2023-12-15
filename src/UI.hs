@@ -15,7 +15,6 @@ import GHC.Num (integerLog2)
 import Graphics.Vty
 import Lib
 import Numeric (readHex, showHex)
-import qualified Data.Vector as V
 
 app :: App AppState () AppName
 app =
@@ -222,7 +221,7 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
                 g :: Integer -> Widget AppName
                 g off =
                   let focusAttr = if state ^. hexMode then editorFocusAttr else editorWeakFocusAttr
-                      focusModAttr = if state ^. hexMode then editorModWeakFocusAttr else editorModFocusAttr
+                      focusModAttr = if state ^. hexMode then editorModFocusAttr else editorModWeakFocusAttr
                       (attr, hexRaw) = case M.lookup off (state ^. modificationBuffer) of
                         Just byte -> (if state ^. fileOffset == off
                           then foldl1' (<+>) $ zipWith (curry $ fun (focusModAttr, editorModAttr)) [0 ..] hexStr
@@ -318,33 +317,36 @@ handler event = do
     Just _ -> promptHandler event
     Nothing -> do
       curr <- use mode
-      case curr of
-        Cmd -> cmdHandler event
-        Edit -> editHandler event
+      shortcutHandler event $
+        case curr of
+          Cmd -> cmdHandler
+          Edit -> editHandler
 
 cmdHandler :: BrickEvent AppName () -> EventM AppName AppState ()
-cmdHandler (VtyEvent (EvKey key modifier)) = case key of
-  KEsc -> do
-    mLayers <- use menuLayers
-    case mLayers of
-      [] -> do
-        path <- use file
-        case path of
-          Just p -> mode .= Edit
-          Nothing -> setStatus "No file opened"
-      _ : ls -> do
-        menuLayers .= ls
-        mFocus <- use menuFocus
-        let _ : fs = mFocus
-         in menuFocus .= fs
-  KUp -> focusChange (-1)
-  KLeft -> focusChange (-1)
-  KDown -> focusChange 1
-  KRight -> focusChange 1
-  KEnter -> menuHandler
-  KPageUp -> statusScroll (-1)
-  KPageDown -> statusScroll 1
-  _ -> setStatus $ "Unknown key: " ++ show key
+cmdHandler (VtyEvent (EvKey key modifier)) = case modifier of
+  [] -> case key of
+    KEsc -> do
+      mLayers <- use menuLayers
+      case mLayers of
+        [] -> do
+          path <- use file
+          case path of
+            Just p -> mode .= Edit
+            Nothing -> setStatus "No file opened"
+        _ : ls -> do
+          menuLayers .= ls
+          mFocus <- use menuFocus
+          let _ : fs = mFocus
+            in menuFocus .= fs
+    KUp -> focusChange (-1)
+    KLeft -> focusChange (-1)
+    KDown -> focusChange 1
+    KRight -> focusChange 1
+    KEnter -> menuHandler
+    KPageUp -> statusScroll (-1)
+    KPageDown -> statusScroll 1
+    _ -> setStatus $ "Unknown key: " ++ show key
+  _ -> return ()
 cmdHandler (VtyEvent EvResize {}) = do
   -- refreshStatus
   refreshBtn 0
@@ -438,31 +440,33 @@ statusScroll d =
    in hScrollBy vp d
 
 promptHandler :: BrickEvent AppName () -> EventM AppName AppState ()
-promptHandler event@(VtyEvent (EvKey key modifier)) = case key of
-  KChar '\t' -> promptFocusChange 1
-  KBackTab -> promptFocusChange (-1)
-  KEnter -> do
-    p <- use prompt
-    let p' = fromMaybe undefined p
-     in do
+promptHandler event@(VtyEvent (EvKey key modifier)) = case modifier of
+  [] -> case key of
+    KChar '\t' -> promptFocusChange 1
+    KBackTab -> promptFocusChange (-1)
+    KEnter -> do
+      p <- use prompt
+      let p' = fromMaybe undefined p
+        in do
           (_, f) <- nestEventM p' $ do
             focus <- use pButtonFocus
             btns <- use pButtons
             return $ snd $ btns !! focus
           f
-  KEsc -> prompt .= Nothing
-  KUp ->
-    let vp = viewportScroll PromptBody
-     in vScrollBy vp (-1)
-  KDown ->
-    let vp = viewportScroll PromptBody
-     in vScrollBy vp 1
-  KLeft ->
-    let vp = viewportScroll PromptBody
-     in hScrollBy vp (-1)
-  KRight ->
-    let vp = viewportScroll PromptBody
-     in hScrollBy vp 1
+    KEsc -> prompt .= Nothing
+    KUp ->
+      let vp = viewportScroll PromptBody
+      in vScrollBy vp (-1)
+    KDown ->
+      let vp = viewportScroll PromptBody
+      in vScrollBy vp 1
+    KLeft ->
+      let vp = viewportScroll PromptBody
+      in hScrollBy vp (-1)
+    KRight ->
+      let vp = viewportScroll PromptBody
+      in hScrollBy vp 1
+    _ -> passExtraHandler event
   _ -> passExtraHandler event
 promptHandler event = passExtraHandler event
 
@@ -491,12 +495,7 @@ promptFocusChange i = do
 editHandler :: BrickEvent AppName () -> EventM AppName AppState ()
 editHandler event = case event of
   VtyEvent (EvKey key modifier) -> case modifier of
-    [x] -> 
-      when (x == MCtrl) $ do
-         case key of
-          KChar 's' -> findPrompt
-          _ -> return ()
-    [] ->   case key of
+    [] -> case key of
       KEsc -> mode .= Cmd
       KChar '\t' -> do
         old <- use hexMode
@@ -538,6 +537,7 @@ editHandler event = case event of
           else do
             alterAscii ch
             hexOffset .= 0 >> alterOffset 1
+      _ -> return ()
     _ -> return ()
   VtyEvent EvResize {} -> alterOffset 0
   _ -> return ()
@@ -571,6 +571,25 @@ editHandler event = case event of
               else current .&. 0x0F .|. fromIntegral c `shiftL` 4
       fileBuffer .= fileBuf // [(fromInteger (off - mmapOff), updated)]
       modificationBuffer .= M.insert off updated modificationBuf
+
+shortcutHandler :: BrickEvent AppName () -> (BrickEvent AppName () -> EventM AppName AppState ()) -> EventM AppName AppState ()
+shortcutHandler event nextHandler = case event of
+  VtyEvent (EvKey key modifier) -> case modifier of
+    [x] -> case x of
+      MCtrl ->
+        case key of
+        KChar 'f' -> findPrompt
+        KChar 'x' -> findHexPrompt
+        KChar 'o' -> openPrompt
+        KChar 's' -> saveFile
+        KChar 'a' -> saveAsPrompt
+        KChar 'w' -> closeFile
+        KChar 'p' -> jumpPrompt
+        KChar 'q' -> exit
+        _ -> nextHandler event
+      _ -> nextHandler event
+    _ -> nextHandler event
+  _ -> nextHandler event
 
 start :: IO ()
 start = void $ defaultMain app initState

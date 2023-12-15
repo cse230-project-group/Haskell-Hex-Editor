@@ -193,18 +193,12 @@ findPrompt =
         render $
           hLimit width $
             vLimit 6 $
-              let fStr =
-                    if state ^. findString == ""
-                      then " "
-                      else state ^. findString
-                  rStr =
-                    if state ^. replaceString == ""
-                      then " "
-                      else state ^. replaceString
+              let fStr = state ^. findString
+                  rStr = state ^. replaceString
                in foldl1'
                     (<=>)
                     [ str "Find: (Press Ctrl + Any Key to switch between find and replace)",
-                      vLimit 1 $ viewport OpenInput Horizontal $ str fStr,
+                      vLimit 1 $ viewport FindInput Horizontal $ str fStr,
                       str $ replicate width '-',
                       str "Replace with:",
                       vLimit 1 $ viewport ReplaceInput Horizontal $ str rStr,
@@ -235,18 +229,12 @@ findHexPrompt =
         render $
           hLimit width $
             vLimit 6 $
-              let fStr =
-                    if state ^. findString == ""
-                      then " "
-                      else state ^. findString
-                  rStr =
-                    if state ^. replaceString == ""
-                      then " "
-                      else state ^. replaceString
+              let fStr = state ^. findString
+                  rStr = state ^. replaceString
                in foldl1'
                     (<=>)
                     [ str "Find: (Press Ctrl + Any Key to switch between find and replace)",
-                      vLimit 1 $ viewport OpenInput Horizontal $ str fStr,
+                      vLimit 1 $ viewport FindInput Horizontal $ str fStr,
                       str $ replicate width '-',
                       str "Replace with:",
                       vLimit 1 $ viewport ReplaceInput Horizontal $ str rStr,
@@ -388,7 +376,7 @@ fillBuffer h oldOff oldSz = do
               then do
                 let padding = V.replicate bufferSize 0
                 fileBuffer .= (b V.// filtered) V.++ padding
-              else do
+              else
                 fileBuffer .= b V.// filtered
             perfCount .= pCnt + 1
 
@@ -545,10 +533,7 @@ alterHex c = do
   fileBuffer .= fileBuf V.// [(fromInteger (alterOff - mmapOff), updated)]
   modificationBuffer .= M.insert alterOff updated modificationBuf
   when (am && hexOff == 1) $ do
-    fileOffset .= off + 1
     fileSize .= size + 1
-    hexOffset .= 0
-    jumpOffset size
 
 alterAscii :: Char -> EventM AppName AppState ()
 alterAscii c = do
@@ -699,7 +684,7 @@ saveAsHandler event = case event of
 findAndReplaceHandler :: BrickEvent AppName () -> EventM AppName AppState ()
 findAndReplaceHandler event = case event of
   VtyEvent (EvKey key modifier) -> case modifier of
-    [x] -> do
+    [x] ->
       when (x == MCtrl) $ do
         originalMode <- use findReplaceMode
         findReplaceMode .= not originalMode
@@ -710,10 +695,10 @@ findAndReplaceHandler event = case event of
           then do
             toFind <- use findString
             findString .= toFind ++ [c]
-            scroll
           else do
             toReplace <- use replaceString
             replaceString .= toReplace ++ [c]
+        scroll
       KBS -> do
         frMode <- use findReplaceMode
         if frMode
@@ -730,6 +715,7 @@ findAndReplaceHandler event = case event of
               then return ()
               else do
                 replaceString .= init toReplace
+                scroll
       KDel -> do
         fmode <- use findReplaceMode
         if fmode

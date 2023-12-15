@@ -88,18 +88,14 @@ initState = MkState Cmd Nothing "Ready" [0] [] (M.fromList [(0, (0, 1))]) Nothin
 menuList :: [[MenuItem]]
 menuList =
   [ [ MkMenu "File" (Just 1),
-      MkMenu "Edit" (Just 2),
-      MkMenu "Help" (Just 3)
+      MkMenu "Edit" (Just 4),
+      MkMenu "Help" (Just 2)
     ],
     [ MkMenu "Open ..." Nothing,
       MkMenu "Save" Nothing,
       MkMenu "Save as ..." Nothing,
       MkMenu "Close" Nothing,
       MkMenu "Exit" Nothing
-    ],
-    [ MkMenu "Jump ..." Nothing,
-      MkMenu "Find Hex ..." Nothing,
-      MkMenu "Find ASCII ..." Nothing
     ],
     [ MkMenu "Debug ->" (Just 3),
       MkMenu "About" Nothing
@@ -112,6 +108,10 @@ menuList =
       MkMenu "Debug 5" Nothing,
       MkMenu "Debug Long String .............................. 1 .............. 2 ...... 3 .. 4  5 End" Nothing,
       MkMenu "Debug Prompt" Nothing
+    ],
+    [ MkMenu "Jump ..." Nothing,
+      MkMenu "Find Hex ..." Nothing,
+      MkMenu "Find ASCII ..." Nothing
     ]
   ]
 

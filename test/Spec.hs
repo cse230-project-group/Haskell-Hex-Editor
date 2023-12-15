@@ -40,7 +40,7 @@ genSpaceStr :: QC.Gen String
 genSpaceStr = do
   pre <- QC.elements [0..100]
   post <- QC.elements [0..100]
-  return $ take pre (repeat ' ') ++ "a b" ++ take post (repeat ' ')
+  return $ replicate pre ' ' ++ "a b" ++ replicate post ' '
 
 genRandChar :: QC.Gen Char
 genRandChar = do
@@ -55,7 +55,7 @@ prop_trimStr = QC.forAll genSpaceStr $ (== "a b") . trimStr
 
 prop_strToByteVec :: QC.Property
 prop_strToByteVec = QC.forAll genRandStr (\str ->
-  let 
+  let
     vec = stringToWord8Vector str
     isEqual :: String -> [Word8] -> Bool
     isEqual [] [] = True
@@ -68,21 +68,13 @@ prop_strToByteVec = QC.forAll genRandStr (\str ->
 test_menuList :: TestTree
 test_menuList = mkTest (f, menuList, True, "test_menuList")
   where
-    f = return . (f' [] 0)
+    f = return . f' [] 0
     f' acc c ml =
       let
         cur = ml !! c
         acc' = c:acc
-        helper b (MkMenu _ child) = if b
-          then
-            case child of
-              Nothing -> True
-              Just c' -> if elem c' acc'
-                then
-                  False
-                else
-                  f' acc' c' ml
-          else
-            False
+        helper b (MkMenu _ child) = (b && (case child of
+          Nothing -> True
+          Just c' -> notElem c' acc' && f' acc' c' ml))
       in
         foldl' helper True cur

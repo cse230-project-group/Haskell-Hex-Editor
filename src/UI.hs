@@ -15,7 +15,6 @@ import GHC.Num (integerLog2)
 import Graphics.Vty
 import Lib
 import Numeric (readHex, showHex)
-import qualified Data.Vector as V
 
 app :: App AppState () AppName
 app =
@@ -284,9 +283,9 @@ drawEditor state = translateBy (Location (0, 1)) $ withAttr editorBgAttr $ repor
             vLimit height $
               hLimit width $
                 padLeftRight 1 $
-                  viewport AsciiView Horizontal $
-                    asciiHeader width
-                      <=> if maxRow < minRow
+                  (<=>) (asciiHeader width) $
+                    viewport AsciiView Horizontal $
+                      if maxRow < minRow
                         then emptyWidget
                         else foldl1' (<=>) $ map f [minRow .. maxRow]
 
